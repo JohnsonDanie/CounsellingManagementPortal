@@ -5,7 +5,7 @@ A modern, high-fidelity counseling management portal designed for school wellnes
 ## 📁 Repository Structure
 
 ```text
-Clinical Management Portal/
+Team-B-Hackathon-Project-2026/
 ├── frontend/           # React + Vite Frontend
 ├── backend/            # Supabase Backend / Edge Functions
 ├── reference/          # Design documentation & legacy UI
