@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Settings, Search, Menu } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Header = ({ onMenuToggle }) => {
@@ -63,27 +63,6 @@ const Header = ({ onMenuToggle }) => {
       {/* Right — Icons + Avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
 
-        {/* Notification Bell */}
-        <button
-          style={{ width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-light)', position: 'relative' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--secondary-bg)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          <Bell size={19} />
-          <span style={{ position: 'absolute', top: '8px', right: '8px', width: '7px', height: '7px', borderRadius: '50%', background: '#ef4444', border: '1.5px solid white' }} />
-        </button>
-
-        {/* Settings */}
-        <button
-          style={{ width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-light)' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--secondary-bg)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          <Settings size={19} />
-        </button>
-
-        {/* Divider */}
-        <div style={{ width: '1px', height: '24px', background: 'var(--border-color)', margin: '0 0.5rem' }} />
 
         {/* User Avatar */}
         <div

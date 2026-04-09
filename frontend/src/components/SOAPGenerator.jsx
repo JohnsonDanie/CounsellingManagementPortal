@@ -76,8 +76,8 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
           </button>
         </div>
 
-        {/* 3-Pane Content */}
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 140px 1.5fr', background: '#f8fafc' }}>
+        {/* 2-Pane Content */}
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1.6fr 1fr', background: '#f8fafc' }}>
           
           {/* Pane 1: INPUT (Raw Notes) */}
           <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderRight: '1px solid #e2e8f0' }}>
@@ -97,39 +97,48 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
               style={{
                 flex: 1, padding: '1.25rem', borderRadius: '16px', border: '2px solid #e2e8f0',
                 background: 'white', color: '#1e293b', fontSize: '1rem', lineHeight: 1.6,
-                outline: 'none', resize: 'none', transition: 'border-color 0.2s'
+                outline: 'none', resize: 'none', transition: 'border-color 0.2s',
+                marginBottom: '0.5rem'
               }}
               onFocus={(e) => e.target.style.borderColor = 'var(--primary-blue)'}
               onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
             />
-          </div>
 
-          {/* Pane 2: ACTION (The AI Bridge) */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem', gap: '1.5rem', background: '#f1f5f9' }}>
-            <div style={{ height: '2px', width: '40px', background: '#cbd5e1' }} />
+            {/* Restyled Generate Button */}
             <button 
               onClick={handleGenerate}
               disabled={loading}
               style={{
-                width: '80px', height: '80px', borderRadius: '50%', 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
+                padding: '1rem 2rem', borderRadius: '12px',
                 background: loading ? '#cbd5e1' : 'linear-gradient(135deg, #1e293b, #334155)',
-                color: 'white', boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: '0.5rem', border: 'none', transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                cursor: loading ? 'not-allowed' : 'pointer'
+                color: 'white', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                width: '100%', fontWeight: 700, fontSize: '1rem'
               }}
               className="generate-btn"
             >
-              {loading ? <Loader2 size={32} className="animate-spin" /> : <Sparkles size={32} />}
-              {!loading && <span style={{ fontSize: '0.65rem', fontWeight: 800 }}>GENERATE</span>}
+              {loading ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>GENERATING...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={20} />
+                  <span>Generate</span>
+                </>
+              )}
             </button>
-            <div style={{ height: '2px', width: '40px', background: '#cbd5e1' }} />
+
             {error && (
-              <div style={{ padding: '0.75rem', borderRadius: '8px', background: '#fee2e2', color: '#b91c1c', fontSize: '0.7rem', fontWeight: 600, textAlign: 'center' }}>
+              <div style={{ padding: '0.75rem', borderRadius: '8px', background: '#fee2e2', color: '#b91c1c', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center' }}>
                 {error}
               </div>
             )}
           </div>
+
 
           {/* Pane 3: OUTPUT (Editable S-O-A-P) */}
           <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto' }}>
@@ -193,7 +202,8 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
             to { opacity: 1; transform: scale(1) translateY(0); }
           }
           .generate-btn:hover {
-            transform: scale(1.1) translateY(-5px);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
             background: #1e293b;
           }
           .animate-spin { animation: spin 1s linear infinite; }
