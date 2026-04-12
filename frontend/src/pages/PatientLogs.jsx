@@ -1,12 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, Filter, MoreHorizontal, User, 
   Calendar, CheckCircle2, XCircle, Clock,
-  MessageSquare, ArrowUpRight, History
+  MessageSquare, ArrowUpRight, History, Sparkles, StopCircle, FileText
 } from 'lucide-react';
+import SOAPGenerator from '../components/SOAPGenerator';
 
 const PatientLogs = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [showSOAP, setShowSOAP] = useState(false);
+  const [activePatient, setActivePatient] = useState(null);
+  const [ongoingSession, setOngoingSession] = useState(null);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+
+  useEffect(() => {
+    let interval;
+    if (ongoingSession) {
+      interval = setInterval(() => {
+        setTimerSeconds(s => s + 1);
+      }, 1000);
+    } else {
+      setTimerSeconds(0);
+    }
+    return () => clearInterval(interval);
+  }, [ongoingSession]);
+
+  const formatTime = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const openSOAP = (patient) => {
+    setActivePatient(patient);
+    setShowSOAP(true);
+  };
+
+  const startSession = (patient) => {
+    setOngoingSession(patient);
+    openSOAP(patient);
+  };
+
+  const finishSession = () => {
+    const patientToDocument = ongoingSession;
+    setOngoingSession(null);
+    openSOAP(patientToDocument);
+  };
 
   // Mock patient data
   const patients = [
@@ -38,6 +77,51 @@ const PatientLogs = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
+      {/* ── ACTIVE SESSION TIMER BANNER ─────────────────────────────────── */}
+      {ongoingSession && (
+        <div style={{
+          background: 'linear-gradient(135deg, #1e293b, #334155)',
+          borderRadius: '20px',
+          padding: '1.25rem 2rem',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ position: 'relative' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444', animation: 'ping 1.5s infinite' }} />
+              </div>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.7, letterSpacing: '0.05em' }}>Current Session</p>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{ongoingSession.name}</h3>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3rem' }}>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.7, marginBottom: '0.2rem' }}>Duration</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.05em' }}>{formatTime(timerSeconds)}</p>
+            </div>
+            <button 
+              onClick={finishSession}
+              style={{
+                background: '#ef4444', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '12px',
+                fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none',
+                cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              <StopCircle size={18} /> Finish Session
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -128,13 +212,22 @@ const PatientLogs = () => {
                   </td>
                   <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                      <button style={{ color: 'var(--primary-blue)', p: '0.5rem', borderRadius: '6px', hover: { bg: '#eff6ff' } }} title="View Profile">
-                        <User size={18} />
+                      <button 
+                        onClick={() => openSOAP(p)}
+                        style={{ color: 'var(--primary-blue)', p: '0.5rem', borderRadius: '6px', background: '#eff6ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                        title="Generate AI SOAP">
+                        <Sparkles size={18} />
                       </button>
-                      <button style={{ color: '#15803d', p: '0.5rem', borderRadius: '6px' }} title="Schedule Follow-up">
+                      <button 
+                        onClick={() => startSession(p)}
+                        style={{ color: '#4338ca', p: '0.5rem', borderRadius: '6px', background: '#e0e7ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                        title="Start Session">
+                        <Clock size={18} />
+                      </button>
+                      <button style={{ color: '#15803d', p: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Schedule Follow-up">
                         <Calendar size={18} />
                       </button>
-                      <button style={{ color: '#ef4444', p: '0.5rem', borderRadius: '6px' }} title="Dismiss Patient">
+                      <button style={{ color: '#ef4444', p: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Dismiss Patient">
                         <XCircle size={18} />
                       </button>
                     </div>
@@ -145,6 +238,22 @@ const PatientLogs = () => {
           </table>
         </div>
       </div>
+      <SOAPGenerator 
+        isOpen={showSOAP} 
+        onClose={() => setShowSOAP(false)} 
+        patientName={activePatient?.name} 
+      />
+
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 1; }
+          75%, 100% { transform: scale(3); opacity: 0; }
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 };

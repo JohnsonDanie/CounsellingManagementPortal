@@ -74,6 +74,7 @@ const Dashboard = () => {
   const startSession = (patient) => {
     setOngoingSession(patient);
     setSessionActive(true);
+    openSOAP(patient);
   };
 
   const finishSession = () => {
