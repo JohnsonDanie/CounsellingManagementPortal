@@ -12,6 +12,7 @@ import BookingCalendar from './pages/BookingCalendar';
 import PatientLogs from './pages/PatientLogs';
 import Notifications from './pages/Notifications';
 import Settings from './pages/Settings';
+import AvailabilitySettings from './pages/AvailabilitySettings';
 import './App.css';
 
 // ── Protected Route ────────────────────────────────────────────────────────
@@ -83,6 +84,7 @@ function App() {
           <Route path="dashboard" element={<ProtectedRoute allowedRoles={['counselor']}><Dashboard /></ProtectedRoute>} />
           <Route path="schedule" element={<ProtectedRoute allowedRoles={['counselor']}><Schedule /></ProtectedRoute>} />
           <Route path="patient-logs" element={<ProtectedRoute allowedRoles={['counselor']}><PatientLogs /></ProtectedRoute>} />
+          <Route path="availability" element={<ProtectedRoute allowedRoles={['counselor']}><AvailabilitySettings /></ProtectedRoute>} />
 
           {/* STUDENT ONLY */}
           <Route path="student-dashboard" element={<StudentRoute><StudentDashboard /></StudentRoute>} />

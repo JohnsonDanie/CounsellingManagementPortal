@@ -58,6 +58,44 @@ export const generateSOAPNote = async (rawNotes) => {
 };
 
 /**
+ * Transcribes audio from a File or Blob using Gemini 1.5 Flash.
+ */
+export const transcribeAudio = async (audioFile) => {
+  if (!genAI) {
+    throw new Error("Gemini API key is required for audio transcription.");
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    // Convert blob to base64
+    const base64Data = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(audioFile);
+    });
+
+    const prompt = "Transcribe this audio recording into clear, punctuated text. Focus on capturing the dialogue between counselor and student accurately. Return only the transcription text.";
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          data: base64Data,
+          mimeType: audioFile.type || "audio/webm"
+        }
+      },
+      prompt
+    ]);
+
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error("Transcription Error:", error);
+    throw new Error("Failed to transcribe audio. Ensure your recording is clear and try again.");
+  }
+};
+
+/**
  * Smart Fallback Keyword Parser (The "Free" Alternative)
  */
 const mockAISOAP = (text) => {

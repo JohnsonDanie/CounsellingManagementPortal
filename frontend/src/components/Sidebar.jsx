@@ -197,6 +197,9 @@ const Sidebar = ({ isOpen, onClose }) => {
               <NavLink to="/patient-logs" onClick={handleNavClick} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <ClipboardList size={19} /> Patient Logs
               </NavLink>
+              <NavLink to="/availability" onClick={handleNavClick} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                <CalendarDays size={19} /> Availability
+              </NavLink>
             </>
           )}
 

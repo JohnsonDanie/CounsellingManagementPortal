@@ -81,10 +81,20 @@ export const analyzeWellbeing = (description = '', selectedTags = [], moodScore 
 
   let priority = 'Routine';
 
+  // 1. Initial Priority Determination
+  // We've lowered the mood threshold for Urgent from 4 to 3 to be less 'trigger-happy'
   if (matchesAny(combined, EMERGENCY_KEYWORDS) || moodScore <= 2) {
     priority = 'Emergency';
-  } else if (matchesAny(combined, URGENT_KEYWORDS) || moodScore <= 4) {
+  } else if (matchesAny(combined, URGENT_KEYWORDS) || moodScore <= 3) {
     priority = 'Urgent';
+  }
+
+  // 2. Resilience Protector Logic
+  // If a student rates their mood as 'Fair' (6) or higher, we treat this as a significant 
+  // protective factor. We downgrade 'Urgent' flags to 'Routine' because the student 
+  // explicitly reports feeling stable. We NEVER downgrade 'Emergency' cases.
+  if (priority === 'Urgent' && moodScore >= 6) {
+    priority = 'Routine';
   }
 
   const category = detectCategory(combined);

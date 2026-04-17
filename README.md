@@ -49,6 +49,12 @@ Team-B-Hackathon-Project-2026/
 - **Counselor Dashboard**: Integrated management of appointments, emergencies, and referrals.
 - **Student Portal**: Self-service booking and wellness assessment flow.
 
+## 📖 Documentation
+
+For detailed guides on the specialized components in this repository:
+- [Intelligent Booking System: Technical Guide](docs/booking_system_technical_guide.md)
+- [Intelligent Booking System: User Manual](docs/booking_system_user_manual.md)
+
 ## 🛡️ Security
 - Role-based Access Control (RBAC)
 - Integrated Crisis Response protocols

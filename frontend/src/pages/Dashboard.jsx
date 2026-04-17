@@ -39,8 +39,6 @@ const Dashboard = () => {
   // Real-time checks for assigned emergency patient
   const hasAssignedEmergency = assessmentResult?.priority === 'Emergency' && assessmentResult?.assignedCounselor?.id === user?.id;
 
-  const [referralNotes, setReferralNotes] = useState('');
-  const [sessionActive, setSessionActive] = useState(false);
   const [showSOAP, setShowSOAP] = useState(false);
   const [activePatient, setActivePatient] = useState(null);
   
@@ -54,8 +52,6 @@ const Dashboard = () => {
       interval = setInterval(() => {
         setTimerSeconds(s => s + 1);
       }, 1000);
-    } else {
-      setTimerSeconds(0);
     }
     return () => clearInterval(interval);
   }, [ongoingSession]);
@@ -73,22 +69,68 @@ const Dashboard = () => {
 
   const startSession = (patient) => {
     setOngoingSession(patient);
-    setSessionActive(true);
     openSOAP(patient);
   };
 
   const finishSession = () => {
     const patientToDocument = ongoingSession;
     setOngoingSession(null);
-    setSessionActive(false);
+    setTimerSeconds(0);
     // Auto-open SOAP generator for the patient just seen
     openSOAP(patientToDocument);
   };
 
-  const appointments = [
-    { id: 1, name: 'Michael Ross', time: '09:00 AM', source: 'System Booking', type: 'standard' },
-    { id: 2, name: 'Sarah Jenkins', time: '10:30 AM', source: 'Internal Referral', type: 'referral' },
-  ];
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      fetchTodayAppointments();
+    }
+  }, [user]);
+
+  const fetchTodayAppointments = async () => {
+    setLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          appointment_time,
+          duration_minutes,
+          session_type,
+          student:student_id (
+            full_name
+          )
+        `)
+        .eq('counselor_id', user.id)
+        .gte('appointment_time', todayStart.toISOString())
+        .lte('appointment_time', todayEnd.toISOString())
+        .neq('status', 'cancelled')
+        .order('appointment_time', { ascending: true });
+
+      if (error) throw error;
+      
+      const formatted = data.map(appt => ({
+        id: appt.id,
+        name: appt.student?.full_name || 'Generic Student',
+        time: new Date(appt.appointment_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+        source: 'System Booking',
+        type: 'standard'
+      }));
+      setAppointments(formatted);
+    } catch (err) {
+      console.error('Error fetching dashboard appointments:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const queue = [
     { position: 1, name: 'Chidi Eze', priority: 'Urgent', waitTime: '~20 min', category: 'Academic' },

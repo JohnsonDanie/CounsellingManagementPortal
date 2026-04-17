@@ -16,11 +16,11 @@ const Schedule = () => {
       interval = setInterval(() => {
         setTimerSeconds(s => s + 1);
       }, 1000);
-    } else {
+    } else if (timerSeconds !== 0) {
       setTimerSeconds(0);
     }
     return () => clearInterval(interval);
-  }, [ongoingSession]);
+  }, [ongoingSession, timerSeconds]);
 
   const formatTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);

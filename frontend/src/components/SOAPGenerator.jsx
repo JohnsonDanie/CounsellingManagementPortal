@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Sparkles, X, Save, Copy, RotateCcw, 
-  ChevronRight, FileText, AlertCircle, Loader2 
+  ChevronRight, FileText, AlertCircle, Loader2,
+  Mic, Square, Paperclip, Upload, Play, Headphones
 } from 'lucide-react';
-import { generateSOAPNote } from '../lib/geminiService';
+import { generateSOAPNote, transcribeAudio } from '../lib/geminiService';
 
 const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
   const [rawNotes, setRawNotes] = useState('');
@@ -15,6 +16,14 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
     assessment: '',
     plan: ''
   });
+
+  // Voice & Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const timerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
 
@@ -45,6 +54,67 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
     console.log("Saving SOAP Note:", soap);
     alert("SOAP Note saved to patient record successfully!");
     onClose();
+  };
+
+  // Recording Logic
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      const chunks = [];
+      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        await handleTranscription(blob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Mic Access Error:", err);
+      setError("Please allow microphone access to record.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(timerRef.current);
+    }
+  };
+
+  const handleAudioUpload = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      await handleTranscription(file);
+    }
+  };
+
+  const handleTranscription = async (audioSource) => {
+    setIsTranscribing(true);
+    setError(null);
+    try {
+      const transcript = await transcribeAudio(audioSource);
+      setRawNotes(prev => prev + (prev ? '\n\n' : '') + "[Transcribed Recording]: " + transcript);
+    } catch (err) {
+      setError(err.message || "Transcription failed.");
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const formatRecordingTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -83,11 +153,76 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
           <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderRight: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Raw Session Input</label>
-              <button 
-                onClick={() => setRawNotes('')}
-                style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 700, background: 'transparent', border: 'none' }}>
-                CLEAR
-              </button>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button 
+                  onClick={() => setRawNotes('')}
+                  style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, background: 'transparent', border: 'none' }}>
+                  CLEAR
+                </button>
+              </div>
+            </div>
+
+            {/* Voice & Speech Toolbar */}
+            <div style={{ 
+              display: 'flex', alignItems: 'center', gap: '1rem', 
+              padding: '1rem', background: '#f1f5f9', borderRadius: '12px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                {isRecording ? (
+                  <button 
+                    onClick={stopRecording}
+                    style={{ 
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', 
+                      background: '#ef4444', color: 'white', border: 'none', 
+                      padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 700,
+                      animation: 'pulse 1.5s infinite'
+                    }}>
+                    <Square size={16} fill="white" />
+                    <span>STOP ({formatRecordingTime(recordingTime)})</span>
+                  </button>
+                ) : (
+                  <button 
+                    onClick={startRecording}
+                    disabled={isTranscribing}
+                    style={{ 
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', 
+                      background: 'white', color: 'var(--primary-blue)', border: '1px solid var(--primary-blue)', 
+                      padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 700,
+                      opacity: isTranscribing ? 0.6 : 1, cursor: isTranscribing ? 'not-allowed' : 'pointer'
+                    }}>
+                    <Mic size={16} />
+                    <span>RECORD MEETING</span>
+                  </button>
+                )}
+
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleAudioUpload} 
+                  accept="audio/*" 
+                  style={{ display: 'none' }} 
+                />
+                <button 
+                  onClick={() => fileInputRef.current.click()}
+                  disabled={isRecording || isTranscribing}
+                  style={{ 
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', 
+                    background: 'white', color: '#64748b', border: '1px solid #cbd5e1', 
+                    padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 600,
+                    opacity: (isRecording || isTranscribing) ? 0.6 : 1, cursor: (isRecording || isTranscribing) ? 'not-allowed' : 'pointer'
+                  }}>
+                  <Upload size={16} />
+                  <span>UPLOAD AUDIO</span>
+                </button>
+              </div>
+
+              {isTranscribing && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-blue)', fontSize: '0.8rem', fontWeight: 700 }}>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>TRANSCRIBING...</span>
+                </div>
+              )}
             </div>
             <textarea 
               value={rawNotes}
@@ -145,8 +280,8 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Clinical Output (Editable)</label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button title="Copy to clipboard" style={{ p: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b' }}><Copy size={16} /></button>
-                <button title="Reset fields" style={{ p: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b' }}><RotateCcw size={16} /></button>
+                <button title="Copy to clipboard" style={{ padding: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b' }}><Copy size={16} /></button>
+                <button title="Reset fields" style={{ padding: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b' }}><RotateCcw size={16} /></button>
               </div>
             </div>
 
@@ -208,6 +343,11 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
           }
           .animate-spin { animation: spin 1s linear infinite; }
           @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+          }
         `}</style>
       </div>
     </div>

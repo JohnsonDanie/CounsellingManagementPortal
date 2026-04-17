@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, UserIcon, Video, AlertCircle, Clock, HeartPulse, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -10,12 +10,67 @@ const StudentDashboard = () => {
   const isHighRisk = assessmentResult?.isHighRisk;
   const priority = assessmentResult?.priority;
 
-  const counselors = [
-    { id: 'chen', name: 'Dr. Sarah Chen', title: 'Clinical Lead', available: true, image: 'https://ui-avatars.com/api/?name=SC&background=235291&color=fff' },
-    { id: 'wilson', name: 'Dr. James Wilson', title: 'Residency Advisor', available: false, image: 'https://ui-avatars.com/api/?name=JW&background=64748b&color=fff', nextAvailable: 'Thurs, 17th' },
-    { id: 'thorne', name: 'Dr. Marcus Thorne', title: 'Mental Health Lead', available: true, image: 'https://ui-avatars.com/api/?name=MT&background=235291&color=fff' },
-    { id: 'vance', name: 'Dr. Helena Vance', title: 'Senior Counsellor', available: false, image: 'https://ui-avatars.com/api/?name=HV&background=64748b&color=fff', nextAvailable: 'Mon, 21st' },
-  ];
+  const [counselors, setCounselors] = useState([]);
+  const [upcomingSessions, setUpcomingSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      
+      // Fetch Counselors
+      const { data: cData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'counselor');
+      
+      const formattedCounselors = (cData || []).map(c => ({
+        id: c.id,
+        name: c.full_name,
+        title: c.title || 'Senior Counselor',
+        available: true, // simplified for now
+        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(c.full_name)}&background=235291&color=fff`
+      }));
+      setCounselors(formattedCounselors);
+
+      // Fetch Upcoming Sessions
+      const { data: aData } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          appointment_time,
+          session_type,
+          counselor:counselor_id (
+            full_name
+          )
+        `)
+        .eq('student_id', user.id)
+        .gte('appointment_time', new Date().toISOString())
+        .neq('status', 'cancelled')
+        .order('appointment_time', { ascending: true })
+        .limit(2);
+
+      const formattedSessions = (aData || []).map(s => ({
+        id: s.id,
+        title: s.session_type === 'virtual' ? 'Virtual Advisory' : 'In-Person Session',
+        counselor: s.counselor?.full_name || 'Dr. Miller',
+        time: new Date(s.appointment_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+      }));
+      setUpcomingSessions(formattedSessions);
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -156,11 +211,17 @@ const StudentDashboard = () => {
           <div className="card">
             <h3 style={{ fontSize: '1rem', color: 'var(--primary-blue)', marginBottom: '1.25rem', fontWeight: 600 }}>Upcoming Sessions</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div style={{ padding: '0.875rem', border: '1px solid var(--border-color)', borderRadius: '10px', background: '#f8fafc' }}>
-                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary-blue)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tomorrow</p>
-                <h4 style={{ fontWeight: 600, color: 'var(--text-dark)', fontSize: '0.9rem' }}>Virtual Advisory</h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-light)', marginTop: '0.2rem' }}>Dr. Sarah Chen · 10:00 AM</p>
-              </div>
+              {upcomingSessions.length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>No upcoming sessions.</p>
+              ) : (
+                upcomingSessions.map((s) => (
+                  <div key={s.id} style={{ padding: '0.875rem', border: '1px solid var(--border-color)', borderRadius: '10px', background: '#f8fafc' }}>
+                    <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary-blue)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confirmed</p>
+                    <h4 style={{ fontWeight: 600, color: 'var(--text-dark)', fontSize: '0.9rem' }}>{s.title}</h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-light)', marginTop: '0.2rem' }}>{s.counselor} · {s.time}</p>
+                  </div>
+                ))
+              )}
 
               {/* Status card for high-risk */}
               {isHighRisk && (

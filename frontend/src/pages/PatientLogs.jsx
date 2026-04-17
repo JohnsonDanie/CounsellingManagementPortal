@@ -19,11 +19,11 @@ const PatientLogs = () => {
       interval = setInterval(() => {
         setTimerSeconds(s => s + 1);
       }, 1000);
-    } else {
+    } else if (timerSeconds !== 0) {
       setTimerSeconds(0);
     }
     return () => clearInterval(interval);
-  }, [ongoingSession]);
+  }, [ongoingSession, timerSeconds]);
 
   const formatTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -211,23 +211,23 @@ const PatientLogs = () => {
                     </span>
                   </td>
                   <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gapadding: '0.5rem', justifyContent: 'flex-end' }}>
                       <button 
                         onClick={() => openSOAP(p)}
-                        style={{ color: 'var(--primary-blue)', p: '0.5rem', borderRadius: '6px', background: '#eff6ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                        style={{ color: 'var(--primary-blue)', padding: '0.5rem', borderRadius: '6px', background: '#eff6ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
                         title="Generate AI SOAP">
                         <Sparkles size={18} />
                       </button>
                       <button 
                         onClick={() => startSession(p)}
-                        style={{ color: '#4338ca', p: '0.5rem', borderRadius: '6px', background: '#e0e7ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                        style={{ color: '#4338ca', padding: '0.5rem', borderRadius: '6px', background: '#e0e7ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
                         title="Start Session">
                         <Clock size={18} />
                       </button>
-                      <button style={{ color: '#15803d', p: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Schedule Follow-up">
+                      <button style={{ color: '#15803d', padding: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Schedule Follow-up">
                         <Calendar size={18} />
                       </button>
-                      <button style={{ color: '#ef4444', p: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Dismiss Patient">
+                      <button style={{ color: '#ef4444', padding: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Dismiss Patient">
                         <XCircle size={18} />
                       </button>
                     </div>
