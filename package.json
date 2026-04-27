@@ -1,0 +1,10 @@
+{
+  "name": "clinical-management-portal",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "install-all": "cd frontend && npm install",
+    "dev": "cd frontend && npm run dev"
+  }
+}
