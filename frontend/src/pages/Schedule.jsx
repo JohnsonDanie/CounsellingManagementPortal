@@ -1,14 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Video, UserIcon, Sparkles, StopCircle, Clock, FileText } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import SOAPGenerator from '../components/SOAPGenerator';
+import VideoRoom from '../components/VideoRoom';
+import { Video, UserIcon, Sparkles, StopCircle, Clock, FileText, Monitor } from 'lucide-react';
 
 const Schedule = () => {
   const [selectedType, setSelectedType] = useState('virtual');
-  const [selectedCounselor, setSelectedCounselor] = useState('wilson');
   const [showSOAP, setShowSOAP] = useState(false);
   const [activePatient, setActivePatient] = useState(null);
   const [ongoingSession, setOngoingSession] = useState(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedStudent, setDraggedStudent] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [matchedStudents, setMatchedStudents] = useState([]);
+  const [showVideo, setShowVideo] = useState(false);
+  const [activeVideoRoom, setActiveVideoRoom] = useState(null);
 
   useEffect(() => {
     let interval;
@@ -23,36 +30,204 @@ const Schedule = () => {
   }, [ongoingSession, timerSeconds]);
 
   const formatTime = (totalSeconds) => {
-    const mins = Math.floor(totalSeconds / 60);
+    const mins = Math.floor(totalSeconds / 10); // Simplified for demo scale
     const secs = totalSeconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const openSOAP = (patientName) => {
-    setActivePatient({ name: patientName });
+  const openSOAP = (patientName, studentId = null, appointmentId = null) => {
+    setActivePatient({ name: patientName, studentId, appointmentId });
     setShowSOAP(true);
   };
 
-  const startSession = (patientName) => {
-    setOngoingSession({ name: patientName });
-    openSOAP(patientName);
+  const startSession = (appt) => {
+    setOngoingSession(appt);
+    openSOAP(appt.student?.full_name, appt.student_id, appt.id);
   };
 
   const finishSession = () => {
     const patientToDocument = ongoingSession;
     setOngoingSession(null);
-    openSOAP(patientToDocument.name);
+    openSOAP(
+      patientToDocument.student?.full_name || "New Student", 
+      patientToDocument.student_id, 
+      patientToDocument.id
+    );
   };
 
-  const counselors = [
-    { id: 'chen', name: 'Dr. Sarah Chen', title: 'CLINICAL LEAD', image: 'https://ui-avatars.com/api/?name=SC&background=random' },
-    { id: 'wilson', name: 'Dr. James Wilson', title: 'RESIDENCY ADVISOR', image: 'https://ui-avatars.com/api/?name=JW&background=random' },
-    { id: 'thorne', name: 'Dr. Marcus Thorne', title: 'ETHICS BOARD', image: 'https://ui-avatars.com/api/?name=MT&background=random' },
-  ];
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+
+  const openVideoRoom = (appt) => {
+    setActiveVideoRoom({
+      roomName: `portal-session-${appt.id}`,
+      patientName: appt.student?.full_name
+    });
+    setShowVideo(true);
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchCounselorAppointments(user.id);
+      fetchMatchedStudents(user.id);
+    }
+  }, [user?.id]);
+
+  const fetchMatchedStudents = async (counselorId) => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('crisis_flags')
+        .select(`
+          id,
+          student_id,
+          assessment:assessment_id (
+            symptoms_description,
+            category,
+            priority_score
+          ),
+          student:student_id (
+            full_name
+          )
+        `)
+        .eq('assigned_counselor_id', counselorId)
+        .eq('referral_status', 'Pending');
+      
+      if (error) throw error;
+      setMatchedStudents(data || []);
+    } catch (err) {
+      console.error('Error fetching matched students:', err);
+    }
+  };
+
+  const handleDragStart = (student) => {
+    setDraggedStudent(student);
+    setIsDragging(true);
+  };
+
+  const handleDrop = async (dayOffset, hour) => {
+    if (!draggedStudent) return;
+    
+    setIsDragging(false);
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + dayOffset);
+    targetDate.setHours(hour, 0, 0, 0);
+
+    const newAppt = {
+      student_id: draggedStudent.student_id,
+      counselor_id: user.id,
+      appointment_time: targetDate.toISOString(),
+      duration_minutes: draggedStudent.duration || 90,
+      buffer_minutes: 2,
+      session_type: selectedType,
+      source: 'System Booking',
+      status: 'scheduled'
+    };
+
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('appointments')
+        .insert(newAppt)
+        .select(`
+          id,
+          appointment_time,
+          duration_minutes,
+          session_type,
+          student:student_id (
+            full_name
+          )
+        `)
+        .single();
+
+      if (!error && data) {
+        setAppointments(prev => [...prev, data]);
+        // Update referral status in DB
+        await supabase
+          .from('crisis_flags')
+          .update({ referral_status: 'In Progress' })
+          .eq('id', draggedStudent.id);
+          
+        setMatchedStudents(prev => prev.filter(s => s.id !== draggedStudent.id));
+      }
+    } catch (err) {
+      console.error('Error creating appointment:', err);
+    }
+    setDraggedStudent(null);
+  };
+
+  const fetchCounselorAppointments = async (counselorId) => {
+    setLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          appointment_time,
+          duration_minutes,
+          session_type,
+          student:student_id (
+            full_name
+          )
+        `)
+        .eq('counselor_id', counselorId)
+        .neq('status', 'cancelled');
+
+      if (error) throw error;
+      setAppointments(data || []);
+    } catch (err) {
+      console.error('Error fetching counselor appointments:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const counselorAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.user_metadata?.name || 'C')}&background=random`;
+
+  // Helper to check if a specific time/day has an appointment
+  const getAppointmentForSlot = (dayOffset, hour) => {
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + dayOffset);
+    
+    return appointments.find(a => {
+      const apptDate = new Date(a.appointment_time);
+      const apptDuration = a.duration_minutes || 90;
+      const apptEnd = new Date(apptDate.getTime() + apptDuration * 60000);
+      
+      // Check if the requested hour falls within the session duration
+      const slotTime = new Date(targetDate);
+      slotTime.setHours(hour, 0, 0, 0);
+      
+      return slotTime >= apptDate && slotTime < apptEnd;
+    });
+  };
+
+  const getSlotPriority = (dayOffset, hour) => {
+    if (hour === 12) return 'break';
+    if (getAppointmentForSlot(dayOffset, hour)) return 'occupied';
+    
+    // Greedy: Is it adjacent to another appointment on the same day?
+    const hasPrev = getAppointmentForSlot(dayOffset, hour - 1);
+    const hasNext = getAppointmentForSlot(dayOffset, hour + 1);
+    
+    if (hasPrev || hasNext) return 'optimal';
+    return 'available';
+  };
+
+  const timeSlots = [9, 10, 11, 12, 13, 14, 15, 16];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
+      {/* ── VIDEO ROOM MODAL ─────────────────────────────────────────── */}
+      <VideoRoom 
+        isOpen={showVideo}
+        onClose={() => setShowVideo(false)}
+        roomName={activeVideoRoom?.roomName}
+        patientName={activeVideoRoom?.patientName}
+      />
+
       {/* ── ACTIVE SESSION TIMER BANNER ─────────────────────────────────── */}
       {ongoingSession && (
         <div style={{
@@ -146,27 +321,58 @@ const Schedule = () => {
           </div>
 
           <div>
-            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>SELECT COUNSELOR</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {counselors.map((c) => (
-                <div 
-                  key={c.id} 
-                  onClick={() => setSelectedCounselor(c.id)}
-                  style={{ 
-                    display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                    backgroundColor: selectedCounselor === c.id ? 'var(--white)' : 'transparent',
-                    border: selectedCounselor === c.id ? '2px solid var(--primary-blue)' : '2px solid transparent',
-                    boxShadow: selectedCounselor === c.id ? 'var(--shadow-sm)' : 'none'
-                  }}
-                >
-                  <img src={c.image} alt={c.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
-                  <div>
-                    <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-dark)', marginBottom: '0.1rem' }}>{c.name}</h4>
-                    <p style={{ fontSize: '0.65rem', color: 'var(--text-light)', fontWeight: 600, letterSpacing: '0.05em' }}>{c.title}</p>
-                  </div>
+            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>ROUTINE REFERRALS (DRAG & DROP)</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {matchedStudents.filter(s => s.assessment?.priority_score !== 'Urgent' && s.assessment?.priority_score !== 'Emergency').length === 0 ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-light)', fontSize: '0.85rem' }}>
+                  No routine referrals
                 </div>
-              ))}
+              ) : (
+                matchedStudents
+                  .filter(s => s.assessment?.priority_score !== 'Urgent' && s.assessment?.priority_score !== 'Emergency')
+                  .map((s) => (
+                  <div 
+                    key={s.id} 
+                    draggable="true"
+                    onDragStart={() => handleDragStart(s)}
+                    style={{ 
+                      backgroundColor: 'var(--white)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', cursor: 'grab',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)', transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary-blue)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>{s.student?.full_name}</h4>
+                      <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '9999px', background: '#f1f5f9', color: '#64748b', fontWeight: 700 }}>{s.assessment?.priority_score}</span>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-light)', lineHeight: '1.4', fontStyle: 'italic' }}>
+                      "{s.assessment?.symptoms_description.substring(0, 80)}..."
+                    </p>
+                    <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.65rem', background: '#eff6ff', color: 'var(--primary-blue)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>{s.assessment?.category}</span>
+                      <select 
+                        value={s.duration} 
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setMatchedStudents(prev => prev.map(item => item.id === s.id ? { ...item, duration: val } : item));
+                        }}
+                        style={{ fontSize: '0.7rem', padding: '0.2rem', borderRadius: '4px', border: '1px solid var(--border-color)', outline: 'none' }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <option value={90}>90 mins</option>
+                        <option value={120}>120 mins</option>
+                        <option value={150}>150 mins</option>
+                        <option value={180}>180 mins</option>
+                      </select>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-light)', marginTop: '1rem', textAlign: 'center' }}>
+              <Sparkles size={12} /> Only routine cases can be scheduled manually
+            </p>
           </div>
           
         </div>
@@ -190,33 +396,119 @@ const Schedule = () => {
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) repeat(2, 0.8fr)', flex: 1 }}>
-            {/* Mocking the columns with events */}
-            <div style={{ borderRight: '1px solid var(--border-color)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ backgroundColor: '#f1f5f9', color: '#94a3b8', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500 }}>09:00 AM</div>
-              <div style={{ backgroundColor: '#f1f5f9', color: '#94a3b8', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500 }}>10:00 AM</div>
-              <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>11:30 AM</div>
-            </div>
-            <div style={{ borderRight: '1px solid var(--border-color)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>09:00 AM</div>
-              <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>10:30 AM</div>
-              <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>02:30 PM</div>
-            </div>
-            <div style={{ borderRight: '1px solid var(--border-color)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-               <div style={{ backgroundColor: '#f1f5f9', color: '#94a3b8', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500 }}>08:00 AM</div>
-               <div style={{ backgroundColor: 'var(--primary-blue)', color: 'white', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', boxShadow: 'var(--shadow-md)' }}>09:30 AM</div>
-               <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>11:00 AM</div>
-            </div>
-            <div style={{ borderRight: '1px solid var(--border-color)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>10:00 AM</div>
-                <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>01:00 PM</div>
-            </div>
-            <div style={{ borderRight: '1px solid var(--border-color)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>09:00 AM</div>
-                <div style={{ backgroundColor: 'var(--accent-light-blue)', color: 'var(--primary-blue)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>10:30 AM</div>
-            </div>
-            {/* Disabled weekends */}
-            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{transform: 'rotate(-90deg)', color: '#cbd5e1', fontSize: '0.75rem', letterSpacing: '0.2em', whiteSpace: 'nowrap' }}>NO SESSIONS</span></div>
-            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{transform: 'rotate(-90deg)', color: '#cbd5e1', fontSize: '0.75rem', letterSpacing: '0.2em', whiteSpace: 'nowrap' }}>NO SESSIONS</span></div>
+            {[0, 1, 2, 3, 4, 5, 6].map(dayOffset => {
+              const nineAM = getAppointmentForSlot(dayOffset, 9);
+              const tenAM = getAppointmentForSlot(dayOffset, 10);
+              const elevenAM = getAppointmentForSlot(dayOffset, 11);
+              const isWeekend = dayOffset >= 5;
+
+              return (
+                <div 
+                  key={dayOffset} 
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.backgroundColor = 'rgba(35, 82, 145, 0.05)'; }}
+                  onDragLeave={(e) => { e.currentTarget.style.backgroundColor = isWeekend ? '#f8fafc' : 'transparent'; }}
+                  onDrop={(e) => { e.preventDefault(); e.currentTarget.style.backgroundColor = isWeekend ? '#f8fafc' : 'transparent'; handleDrop(dayOffset, 9); }}
+                  style={{ borderRight: dayOffset < 6 ? '1px solid var(--border-color)' : 'none', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', backgroundColor: isWeekend ? '#f8fafc' : 'transparent', transition: 'background-color 0.2s' }}
+                >
+                  {isWeekend ? (
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ transform: 'rotate(-90deg)', color: '#cbd5e1', fontSize: '0.75rem', letterSpacing: '0.2em', whiteSpace: 'nowrap' }}>NO SESSIONS</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {timeSlots.map(hour => {
+                        const appt = getAppointmentForSlot(dayOffset, hour);
+                        const priority = getSlotPriority(dayOffset, hour);
+                        const isOptimal = priority === 'optimal' && isDragging;
+                        
+                        if (priority === 'break') {
+                          return (
+                            <div key={hour} style={{ 
+                              padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700,
+                              background: 'repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 10px, #e2e8f0 10px, #e2e8f0 20px)',
+                              color: 'var(--text-light)', border: '1px solid var(--border-color)', opacity: 0.6
+                            }}>
+                              LUNCH BREAK
+                            </div>
+                          );
+                        }
+
+                        if (appt) {
+                          const isEmergency = appt.priority === 'Urgent' || appt.priority === 'Emergency' || appt.source === 'Internal Referral';
+                          const apptStartHour = new Date(appt.appointment_time).getHours();
+                          const isStart = apptStartHour === hour;
+
+                          if (!isStart) {
+                            return (
+                              <div key={hour} style={{ 
+                                backgroundColor: isEmergency ? '#fef2f2' : '#f8fafc', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: `1px dashed ${isEmergency ? '#ef4444' : '#cbd5e1'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.8
+                              }}>
+                                <span style={{ fontSize: '0.65rem', fontWeight: 600, color: isEmergency ? '#ef4444' : '#64748b' }}>
+                                  (Continuing) {appt.student?.full_name}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={hour} style={{ 
+                              backgroundColor: 'var(--white)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: isEmergency ? '2px solid #ef4444' : '1px solid var(--border-color)',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                              position: 'relative', zIndex: 1
+                            }}>
+                              {isEmergency && (
+                                <div style={{ position: 'absolute', top: '-10px', right: '10px', background: '#ef4444', color: 'white', fontSize: '0.55rem', fontWeight: 900, padding: '2px 6px', borderRadius: '4px', letterSpacing: '0.05em' }}>SYSTEM ALLOCATED</div>
+                              )}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isEmergency ? '#ef4444' : 'var(--primary-blue)' }}>{hour > 12 ? hour - 12 : hour}:00 {hour >= 12 ? 'PM' : 'AM'}</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{appt.student?.full_name}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                {appt.session_type === 'virtual' && (
+                                  <button 
+                                    onClick={() => openVideoRoom(appt)}
+                                    style={{ flex: 1, background: '#8b5cf6', color: 'white', border: 'none', padding: '0.35rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                                  >
+                                    <Monitor size={12} /> VIDEO
+                                  </button>
+                                )}
+                                <button onClick={() => startSession(appt)} style={{ flex: 1, background: isEmergency ? '#ef4444' : 'var(--primary-blue)', color: 'white', border: 'none', padding: '0.35rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}>START</button>
+                                <button onClick={() => openSOAP(appt.student?.full_name, appt.student_id, appt.id)} style={{ background: isEmergency ? '#fef2f2' : '#eff6ff', color: isEmergency ? '#ef4444' : '#eff6ff', border: `1px solid ${isEmergency ? '#ef4444' : 'var(--primary-blue)'}`, padding: '0.35rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}>SOAP</button>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div 
+                            key={hour}
+                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary-blue)'; }}
+                            onDragLeave={(e) => { e.currentTarget.style.borderColor = isOptimal ? '#22c55e' : 'transparent'; }}
+                            onDrop={(e) => { e.preventDefault(); handleDrop(dayOffset, hour); }}
+                            style={{ 
+                              backgroundColor: isOptimal ? '#f0fdf4' : '#f1f5f9', 
+                              color: isOptimal ? '#166534' : '#94a3b8', 
+                              padding: '0.75rem', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, 
+                              transition: 'all 0.2s', border: '2px dashed',
+                              borderColor: isOptimal ? '#22c55e' : 'transparent'
+                            }}
+                          >
+                            {isOptimal ? (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                                <Sparkles size={12} /> {hour > 12 ? hour - 12 : hour}:00 {hour >= 12 ? 'PM' : 'AM'} (Optimal)
+                              </div>
+                            ) : (
+                              `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -224,31 +516,29 @@ const Schedule = () => {
       {/* Bottom Bar Content */}
       <div style={{ backgroundColor: '#3b5f8f', borderRadius: 'var(--radius-lg)', padding: '1.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white', marginTop: '1rem' }}>
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <img src={counselors.find(c => c.id === selectedCounselor)?.image} style={{ width: '64px', height: '64px', borderRadius: 'var(--radius-sm)', border: '2px solid rgba(255,255,255,0.2)' }} />
+          <img src={counselorAvatar} style={{ width: '64px', height: '64px', borderRadius: 'var(--radius-sm)', border: '2px solid rgba(255,255,255,0.2)' }} />
           <div>
-            <p style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em', color: 'rgba(255,255,255,0.8)', marginBottom: '0.25rem' }}>SELECTED SESSION</p>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>Virtual Advisory with {counselors.find(c => c.id === selectedCounselor)?.name}</h3>
-            <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.9)' }}>Wed, Jun 14 &nbsp;•&nbsp; 09:30 AM - 10:15 AM</p>
+            <p style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em', color: 'rgba(255,255,255,0.8)', marginBottom: '0.25rem' }}>LOGGED IN AS</p>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>{user?.user_metadata?.name}</h3>
+            <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.9)' }}>Managing Clinical Rotations & Referrals</p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button 
-            onClick={() => openSOAP("Scheduled Student")}
+            onClick={() => openSOAP("Ad-hoc Session", null, null)}
             style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'white', padding: '1rem 1.5rem', borderRadius: 'var(--radius-md)', fontWeight: 600, border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Sparkles size={18} /> Generate SOAP
           </button>
           <button 
-            onClick={() => startSession("Scheduled Student")}
-            style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'white', padding: '1rem 1.5rem', borderRadius: 'var(--radius-md)', fontWeight: 600, border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Clock size={18} /> Start Session
-          </button>
-          <button style={{ backgroundColor: 'white', color: 'var(--primary-blue)', padding: '1rem 2rem', borderRadius: 'var(--radius-md)', fontWeight: 600, fontSize: '1rem', border: 'none' }}>Confirm Appointment</button>
+            style={{ backgroundColor: 'white', color: 'var(--primary-blue)', padding: '1rem 2rem', borderRadius: 'var(--radius-md)', fontWeight: 600, fontSize: '1rem', border: 'none' }}>Confirm Appointment</button>
         </div>
       </div>
       <SOAPGenerator 
         isOpen={showSOAP} 
         onClose={() => setShowSOAP(false)} 
         patientName={activePatient?.name} 
+        studentId={activePatient?.studentId}
+        appointmentId={activePatient?.appointmentId}
       />
 
       <style>{`

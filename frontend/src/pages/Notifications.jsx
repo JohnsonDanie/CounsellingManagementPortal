@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bell, CheckCircle2, AlertCircle, Info, 
   Trash2, X, MessageSquare, Calendar
@@ -9,39 +9,74 @@ const Notifications = () => {
   const { user } = useAuth();
   const isCounselor = user?.user_metadata?.role === 'counselor';
 
-  const [notifications, setNotifications] = useState([
-    { 
-      id: 1, 
-      type: 'success', 
-      title: isCounselor ? 'Session Completed' : 'Appointment Confirmed', 
-      message: isCounselor ? 'You have successfully logged the session for Michael Ross.' : 'Your appointment with Dr. Helena Vance on Monday at 10:00 AM is confirmed.',
-      time: '1h ago', 
-      isRead: false 
-    },
-    { 
-      id: 2, 
-      type: 'priority', 
-      title: isCounselor ? 'Emergency Assignment' : 'Counselor Assigned', 
-      message: isCounselor ? 'An Emergency priority student was auto-assigned to you.' : 'A counselor has been assigned to your walk-in intake. Please wait for contact.', 
-      time: '3h ago', 
-      isRead: true 
-    },
-    { 
-      id: 3, 
-      type: 'info', 
-      title: 'Portal Update', 
-      message: 'New features have been added to the Digital Queue system.', 
-      time: 'Yesterday', 
-      isRead: true 
-    },
-  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+    }
+  }, [user]);
+
+  const fetchNotifications = async () => {
+    setLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setNotifications(data || []);
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const removeNotification = (id) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+  const markAllRead = async () => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error('Error marking all as read:', err);
+    }
+  };
+
+  const removeNotification = async (id) => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      setNotifications(notifications.filter(n => n.id !== id));
+    } catch (err) {
+      console.error('Error removing notification:', err);
+    }
+  };
+
+  const formatNotificationTime = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
   };
 
   const getIcon = (type) => {
@@ -88,8 +123,8 @@ const Notifications = () => {
           notifications.map((n) => (
             <div key={n.id} className="card" style={{ 
               padding: '1.25rem', display: 'flex', gap: '1rem',
-              opacity: n.isRead ? 0.75 : 1,
-              borderLeft: n.isRead ? '4px solid var(--border-color)' : `4px solid ${n.type === 'priority' ? '#ef4444' : 'var(--primary-blue)'}`,
+              opacity: n.is_read ? 0.75 : 1,
+              borderLeft: n.is_read ? '4px solid var(--border-color)' : `4px solid ${n.type === 'priority' ? '#ef4444' : 'var(--primary-blue)'}`,
               transition: 'all 0.2s'
             }}>
               <div style={{ 
@@ -102,13 +137,13 @@ const Notifications = () => {
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                   <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-dark)' }}>{n.title}</h3>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{n.time}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{formatNotificationTime(n.created_at)}</span>
                 </div>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-light)', lineHeight: 1.5 }}>{n.message}</p>
               </div>
               <button 
                 onClick={() => removeNotification(n.id)}
-                style={{ color: 'var(--text-light)', p: '0.4rem', borderRadius: '50%' }}
+                style={{ color: 'var(--text-light)', padding: '0.4rem', borderRadius: '50%', background: 'transparent', border: 'none', cursor: 'pointer' }}
                 className="close-hover"
               >
                 <X size={16} />

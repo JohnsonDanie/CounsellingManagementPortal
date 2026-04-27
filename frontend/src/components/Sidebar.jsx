@@ -170,7 +170,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', flex: 1 }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '1rem 0 0.5rem 1rem' }}>Menu</div>
           
-          {user?.user_metadata?.role === 'student' ? (
+          {user?.user_metadata?.role === 'student' && (
             <>
               <NavLink to="/student-dashboard" onClick={handleNavClick} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <LayoutDashboard size={19} /> My Dashboard
@@ -186,7 +186,9 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <Calendar size={19} /> Appointments
               </NavLink>
             </>
-          ) : (
+          )}
+
+          {user?.user_metadata?.role === 'counselor' && (
             <>
               <NavLink to="/dashboard" onClick={handleNavClick} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <LayoutDashboard size={19} /> Overview

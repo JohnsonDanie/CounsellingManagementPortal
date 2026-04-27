@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
+import AdminLayout from './components/AdminLayout';
 import Dashboard from './pages/Dashboard';
 import Schedule from './pages/Schedule';
 import ConfirmRotation from './pages/ConfirmRotation';
@@ -13,6 +14,9 @@ import PatientLogs from './pages/PatientLogs';
 import Notifications from './pages/Notifications';
 import Settings from './pages/Settings';
 import AvailabilitySettings from './pages/AvailabilitySettings';
+import ResourceCMS from './pages/ResourceCMS';
+import SystemOversight from './pages/SystemOversight';
+import PostSessionSurvey from './pages/PostSessionSurvey';
 import './App.css';
 
 // ── Protected Route ────────────────────────────────────────────────────────
@@ -43,6 +47,7 @@ const MainRedirect = () => {
     if (!assessmentResult) return <Navigate to="/assessment" replace />;
     return <Navigate to="/student-dashboard" replace />;
   }
+  if (user?.user_metadata?.role === 'desk_officer' || user?.user_metadata?.role === 'admin') return <Navigate to="/admin" replace />;
   if (user?.user_metadata?.role === 'counselor') return <Navigate to="/dashboard" replace />;
   return <Navigate to="/auth" replace />;
 };
@@ -89,7 +94,13 @@ function App() {
           {/* STUDENT ONLY */}
           <Route path="student-dashboard" element={<StudentRoute><StudentDashboard /></StudentRoute>} />
           <Route path="booking" element={<StudentRoute><BookingCalendar /></StudentRoute>} />
+          <Route path="survey" element={<StudentRoute><PostSessionSurvey /></StudentRoute>} />
           <Route path="confirm-rotation" element={<ProtectedRoute allowedRoles={['student', 'counselor']}><ConfirmRotation /></ProtectedRoute>} />
+        </Route>
+
+        <Route path="/admin" element={user ? <AdminLayout /> : <Navigate to="/auth" />}>
+          <Route index element={<ProtectedRoute allowedRoles={['desk_officer', 'admin']}><ResourceCMS /></ProtectedRoute>} />
+          <Route path="oversight" element={<ProtectedRoute allowedRoles={['admin']}><SystemOversight /></ProtectedRoute>} />
         </Route>
       </Routes>
     </Router>

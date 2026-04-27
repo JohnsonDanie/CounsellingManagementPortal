@@ -39,10 +39,11 @@ const Assessment = () => {
 
   const [step, setStep] = useState(1);
   const [selectedTags, setSelectedTags] = useState([]);
+  const [severityScores, setSeverityScores] = useState({});
   const [description, setDescription] = useState('');
   const [moodScore, setMoodScore] = useState(5);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState(null); // null | { priority, category, isHighRisk }
+  const [result, setResult] = useState(null);
 
   const toggleTag = (label) => {
     setSelectedTags((prev) =>
@@ -55,7 +56,6 @@ const Assessment = () => {
     const { priority, category, isHighRisk } = analyzeWellbeing(description, selectedTags, moodScore);
 
     try {
-      // Save assessment to Supabase
       const { data: assessment, error: assessErr } = await supabase
         .from('assessments')
         .insert({
@@ -63,6 +63,7 @@ const Assessment = () => {
           symptoms_description: description,
           category,
           priority_score: priority,
+          severity_scores: severityScores,
           status: isHighRisk ? 'in_queue' : 'pending',
         })
         .select()
@@ -70,24 +71,21 @@ const Assessment = () => {
 
       if (assessErr) throw assessErr;
 
-      // If high risk, create a crisis flag entry
       if (isHighRisk && assessment) {
         await supabase.from('crisis_flags').insert({
           assessment_id: assessment.id,
           student_id: user.id,
-          queue_position: Math.floor(Math.random() * 3) + 1, // Will be properly ordered by backend
+          queue_position: Math.floor(Math.random() * 3) + 1,
           referral_status: 'Pending',
         });
       }
     } catch (err) {
       console.error('Assessment save error:', err);
-      // Proceed with local result even if DB fails (demo mode)
     }
 
-    // Mark assessment done in local state
     setAssessmentComplete({ priority, category, isHighRisk });
     setResult({ priority, category, isHighRisk });
-    setStep(4); // Result step
+    setStep(5);
     setSubmitting(false);
   };
 
@@ -122,7 +120,7 @@ const Assessment = () => {
             borderRadius: '16px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 1rem',
-            boxShadow: '0 8px 20px rgba(35,82,145,0.25)',
+            boxShadow: '0 8px 10px rgba(35,82,145,0.25)',
           }}>
             <HeartPulse color="white" size={28} />
           </div>
@@ -135,10 +133,10 @@ const Assessment = () => {
         </div>
 
         {/* Progress Bar */}
-        {step < 4 && (
+        {step < 5 && (
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              {['Symptoms', 'Your Story', 'How You Feel'].map((label, i) => (
+              {['Symptoms', 'Severity', 'Story', 'Mood'].map((label, i) => (
                 <span key={i} style={{
                   fontSize: '0.75rem', fontWeight: 600,
                   color: step > i ? '#235291' : step === i + 1 ? '#235291' : '#94a3b8',
@@ -151,7 +149,7 @@ const Assessment = () => {
             <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
-                width: `${((step - 1) / 3) * 100}%`,
+                width: `${((step - 1) / 4) * 100}%`,
                 background: 'linear-gradient(90deg, #235291, #4f80c0)',
                 borderRadius: '99px',
                 transition: 'width 0.4s ease',
@@ -175,9 +173,6 @@ const Assessment = () => {
               <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem', color: '#1e293b' }}>
                 What are you experiencing?
               </h2>
-              <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                Select all that apply. You can choose multiple.
-              </p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.75rem' }}>
                 {SYMPTOM_TAGS.map(({ label, icon: Icon, color }) => {
                   const active = selectedTags.includes(label);
@@ -187,224 +182,112 @@ const Assessment = () => {
                       onClick={() => toggleTag(label)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
-                        padding: '0.875rem 1rem',
-                        borderRadius: '12px',
+                        padding: '0.8rem', borderRadius: '12px',
                         border: active ? `2px solid ${color}` : '2px solid #e2e8f0',
-                        background: active ? `${color}12` : '#fafafa',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        userSelect: 'none',
+                        background: active ? `${color}08` : '#fff', cursor: 'pointer'
                       }}
                     >
-                      <div style={{
-                        width: '32px', height: '32px', borderRadius: '8px',
-                        background: active ? `${color}22` : '#f1f5f9',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
-                      }}>
-                        <Icon size={16} color={active ? color : '#94a3b8'} />
-                      </div>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: active ? '#1e293b' : '#64748b' }}>
-                        {label}
-                      </span>
+                      <Icon size={16} color={active ? color : '#94a3b8'} />
+                      <span style={{ fontSize: '0.85rem' }}>{label}</span>
                     </div>
                   );
                 })}
               </div>
-              <button
-                className="btn-primary"
-                onClick={() => setStep(2)}
-                style={{ width: '100%', padding: '0.875rem', borderRadius: '12px', fontSize: '1rem', justifyContent: 'center' }}
+              <button 
+                className="btn-primary" 
+                style={{ width: '100%' }}
+                onClick={() => {
+                  if (selectedTags.length > 0) {
+                    const newScores = { ...severityScores };
+                    selectedTags.forEach(t => { if(!newScores[t]) newScores[t] = 5; });
+                    setSeverityScores(newScores);
+                    setStep(2);
+                  } else setStep(3);
+                }}
               >
-                Continue <ChevronRight size={18} />
+                Next <ChevronRight size={18} />
               </button>
             </div>
           )}
 
-          {/* STEP 2 — Free Text */}
+          {/* STEP 2 — Severity Sliders */}
           {step === 2 && (
             <div>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem', color: '#1e293b' }}>
-                Tell us more in your own words
-              </h2>
-              <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                Whatever you're comfortable sharing helps us understand how to best support you.
-              </p>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="I've been feeling... (e.g. struggling with exams, feeling disconnected from friends, overwhelmed by everything)"
-                rows={6}
-                style={{
-                  width: '100%', padding: '1rem', borderRadius: '12px',
-                  border: '2px solid #e2e8f0', fontSize: '0.95rem',
-                  fontFamily: 'inherit', resize: 'vertical', outline: 'none',
-                  lineHeight: 1.6, color: '#1e293b',
-                  transition: 'border-color 0.2s ease',
-                  marginBottom: '1.5rem',
-                }}
-                onFocus={(e) => (e.target.style.borderColor = '#235291')}
-                onBlur={(e) => (e.target.style.borderColor = '#e2e8f0')}
-              />
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button onClick={() => setStep(1)} className="btn-secondary" style={{ flex: 1, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                  <ChevronLeft size={16} /> Back
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={() => setStep(3)}
-                  style={{ flex: 2, borderRadius: '12px', justifyContent: 'center' }}
-                >
-                  Continue <ChevronRight size={18} />
-                </button>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '1.5rem' }}>Symptom Intensity</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
+                {selectedTags.map(tag => (
+                  <div key={tag}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                      <span style={{ fontWeight: 600 }}>{tag}</span>
+                      <span style={{ color: 'var(--primary-blue)', fontWeight: 800 }}>{severityScores[tag] || 5}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={severityScores[tag] || 5} onChange={(e) => setSeverityScores({...severityScores, [tag]: parseInt(e.target.value)})} style={{ width: '100%', accentColor: 'var(--primary-blue)' }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button onClick={() => setStep(1)} className="btn-secondary" style={{ flex: 1 }}>Back</button>
+                <button onClick={() => setStep(3)} className="btn-primary" style={{ flex: 2 }}>Next</button>
               </div>
             </div>
           )}
 
-          {/* STEP 3 — Mood Slider */}
+          {/* STEP 3 — Your Story */}
           {step === 3 && (
             <div>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem', color: '#1e293b' }}>
-                How are you feeling right now?
-              </h2>
-              <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '2rem' }}>
-                Rate your overall well-being on a scale of 1 to 10.
-              </p>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '1rem' }}>Tell us more</h2>
+              <textarea 
+                value={description} onChange={e => setDescription(e.target.value)}
+                placeholder="Share whatever you are comfortable with..."
+                style={{ width: '100%', padding: '1rem', borderRadius: '12px', border: '2px solid #e2e8f0', minHeight: '150px', marginBottom: '1.5rem', outline: 'none' }}
+              />
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button onClick={() => setStep(selectedTags.length > 0 ? 2 : 1)} className="btn-secondary" style={{ flex: 1 }}>Back</button>
+                <button onClick={() => setStep(4)} className="btn-primary" style={{ flex: 2 }}>Next</button>
+              </div>
+            </div>
+          )}
 
-              {/* Mood display */}
+          {/* STEP 4 — Overall Mood */}
+          {step === 4 && (
+            <div>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '2rem', textAlign: 'center' }}>How is your overall mood?</h2>
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <div style={{
-                  width: '80px', height: '80px', borderRadius: '50%',
-                  background: `${moodColor}18`,
-                  border: `3px solid ${moodColor}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 1rem',
-                  transition: 'all 0.3s ease',
-                }}>
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: `${moodColor}18`, border: `3px solid ${moodColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
                   <MoodIcon size={36} color={moodColor} />
                 </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 700, color: moodColor, transition: 'color 0.3s ease' }}>
-                  {moodScore}
-                </div>
-                <div style={{ fontSize: '1rem', color: '#64748b', fontWeight: 500 }}>
-                  {MOOD_LABELS[moodScore]?.label}
-                </div>
+                <div style={{ fontSize: '2.5rem', fontWeight: 800, color: moodColor }}>{moodScore}</div>
+                <p style={{ fontWeight: 600, color: '#64748b' }}>{MOOD_LABELS[moodScore]?.label}</p>
               </div>
-
-              {/* Slider */}
-              <div style={{ padding: '0 0.5rem', marginBottom: '2rem' }}>
-                <input
-                  type="range" min="1" max="10" value={moodScore}
-                  onChange={(e) => setMoodScore(Number(e.target.value))}
-                  style={{
-                    width: '100%', height: '8px', borderRadius: '99px',
-                    cursor: 'pointer', accentColor: moodColor,
-                  }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Very Poor</span>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Excellent</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                  <ChevronLeft size={16} /> Back
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                  style={{ flex: 2, borderRadius: '12px', justifyContent: 'center', opacity: submitting ? 0.7 : 1 }}
-                >
-                  {submitting ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Analysing...</> : <>Submit Assessment <ChevronRight size={18} /></>}
+              <input type="range" min="1" max="10" value={moodScore} onChange={e => setMoodScore(parseInt(e.target.value))} style={{ width: '100%', accentColor: moodColor, marginBottom: '2rem' }} />
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button onClick={() => setStep(3)} className="btn-secondary" style={{ flex: 1 }}>Back</button>
+                <button onClick={handleSubmit} disabled={submitting} className="btn-primary" style={{ flex: 2 }}>
+                  {submitting ? 'Analyzing...' : 'Complete Assessment'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 4 — Result */}
-          {step === 4 && result && (
+          {/* STEP 5 — Result */}
+          {step === 5 && result && (
             <div style={{ textAlign: 'center' }}>
-              {result.isHighRisk ? (
-                <>
-                  <div style={{
-                    width: '72px', height: '72px', borderRadius: '50%',
-                    background: '#fee2e2', border: '3px solid #ef4444',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    margin: '0 auto 1.25rem',
-                  }}>
-                    <AlertTriangle size={32} color="#b91c1c" />
-                  </div>
-                  <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.75rem' }}>
-                    We're here for you
-                  </h2>
-                  <p style={{ color: '#64748b', lineHeight: 1.6, marginBottom: '0.75rem' }}>
-                    Based on your responses, we've identified that you may need <strong>immediate support</strong>.
-                  </p>
-                  <div style={{
-                    background: '#fee2e2', borderRadius: '12px', padding: '1rem 1.25rem',
-                    marginBottom: '1.25rem', display: 'inline-block',
-                  }}>
-                    <span style={{ color: '#b91c1c', fontWeight: 700, fontSize: '0.9rem' }}>
-                      {result.priority} Priority — {result.category}
-                    </span>
-                  </div>
-                  <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.75rem' }}>
-                    You've been placed at the top of our <strong>Walk-in Priority Queue</strong>. A counselor will attend to you shortly. Your case has been flagged for immediate attention.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div style={{
-                    width: '72px', height: '72px', borderRadius: '50%',
-                    background: '#dcfce7', border: '3px solid #22c55e',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    margin: '0 auto 1.25rem',
-                  }}>
-                    <CheckCircle2 size={32} color="#15803d" />
-                  </div>
-                  <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.75rem' }}>
-                    Assessment Complete
-                  </h2>
-                  <p style={{ color: '#64748b', lineHeight: 1.6, marginBottom: '0.75rem' }}>
-                    Thank you for sharing. We've categorised your needs and found available sessions for you.
-                  </p>
-                  <div style={{
-                    background: '#dcfce7', borderRadius: '12px', padding: '1rem 1.25rem',
-                    marginBottom: '1.25rem', display: 'inline-block',
-                  }}>
-                    <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.9rem' }}>
-                      {result.priority} — {result.category}
-                    </span>
-                  </div>
-                  <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.75rem' }}>
-                    Please select a convenient time slot from our booking calendar below.
-                  </p>
-                </>
-              )}
-              <button
-                className="btn-primary"
-                onClick={handleContinue}
-                style={{ width: '100%', padding: '0.875rem', borderRadius: '12px', fontSize: '1rem', justifyContent: 'center' }}
+              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: result.isHighRisk ? '#fee2e2' : '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+                {result.isHighRisk ? <AlertTriangle color="#ef4444" /> : <CheckCircle2 color="#22c55e" />}
+              </div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>{result.isHighRisk ? 'Support is available.' : 'Thank you for sharing.'}</h2>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '2rem' }}>Priority Level: <strong>{result.priority}</strong></p>
+              <button 
+                onClick={handleContinue} 
+                className="btn-primary" 
+                style={{ width: '100%' }}
               >
-                {result.isHighRisk ? 'Go to My Dashboard' : 'Book a Session'} <ChevronRight size={18} />
+                {result.isHighRisk ? 'Go to Safety Dashboard' : 'Continue to Portal'}
               </button>
             </div>
           )}
         </div>
-
-        {/* Footer note */}
-        {step < 4 && (
-          <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#94a3b8', fontSize: '0.8rem' }}>
-            🔒 Your responses are confidential and only shared with your assigned counselor.
-          </p>
-        )}
       </div>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 };

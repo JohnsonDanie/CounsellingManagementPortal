@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, Filter, MoreHorizontal, User, 
-  Calendar, CheckCircle2, XCircle, Clock,
-  MessageSquare, ArrowUpRight, History, Sparkles, StopCircle, FileText
+  Search, Filter, User, Calendar, CheckCircle2, XCircle, Clock,
+  History, Sparkles, StopCircle, Siren, LineChart as ChartIcon, X
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import SOAPGenerator from '../components/SOAPGenerator';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 
 const PatientLogs = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -12,6 +15,11 @@ const PatientLogs = () => {
   const [activePatient, setActivePatient] = useState(null);
   const [ongoingSession, setOngoingSession] = useState(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
+  
+  // Progress Chart Stats
+  const [showProgress, setShowProgress] = useState(false);
+  const [historicalData, setHistoricalData] = useState([]);
+  const [chartLoading, setChartLoading] = useState(false);
 
   useEffect(() => {
     let interval;
@@ -36,6 +44,33 @@ const PatientLogs = () => {
     setShowSOAP(true);
   };
 
+  const fetchHistoricalData = async (patient) => {
+    setActivePatient(patient);
+    setShowProgress(true);
+    setChartLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('*')
+        .eq('student_id', patient.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const transformed = data.map(item => ({
+        date: new Date(item.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+        ...item.severity_scores,
+        'Overall Mood': item.priority_score === 'Emergency' ? 1 : item.priority_score === 'Urgent' ? 3 : 7 
+      }));
+      setHistoricalData(transformed);
+    } catch (err) {
+      console.error('Error fetching history:', err);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
   const startSession = (patient) => {
     setOngoingSession(patient);
     openSOAP(patient);
@@ -47,21 +82,80 @@ const PatientLogs = () => {
     openSOAP(patientToDocument);
   };
 
-  // Mock patient data
-  const patients = [
-    { id: 1, name: 'Michael Ross', category: 'Academic', priority: 'Routine', lastSession: 'Oct 12, 2023', status: 'In Progress' },
-    { id: 2, name: 'Sarah Jenkins', category: 'Individual', priority: 'Urgent', lastSession: 'Oct 14, 2023', status: 'Needs Follow-up' },
-    { id: 3, name: 'David Kim', category: 'Mental Health', priority: 'Emergency', lastSession: 'Oct 15, 2023', status: 'Resolved' },
-    { id: 4, name: 'Emily Chen', category: 'Career', priority: 'Routine', lastSession: 'Oct 08, 2023', status: 'Dismissed' },
-    { id: 5, name: 'James Wilson', category: 'Personal', priority: 'Urgent', lastSession: 'Oct 11, 2023', status: 'In Progress' },
-  ];
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ managed: 0, pending: 0, emergency: 0, resolved: 0 });
+
+  useEffect(() => {
+    fetchPatients();
+  }, [searchTerm]);
+
+  const fetchPatients = async () => {
+    setLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      
+      const { count: managedCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'student');
+      const { count: pendingCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'in-progress');
+      const { count: emergencyCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('priority_score', 'Emergency');
+      const { count: resolvedCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
+
+      setStats({
+        managed: managedCount || 0,
+        pending: pendingCount || 0,
+        emergency: emergencyCount || 0,
+        resolved: resolvedCount || 0
+      });
+
+      let query = supabase
+        .from('profiles')
+        .select(`
+          id,
+          full_name,
+          assessments (
+            id,
+            category,
+            priority_score,
+            status,
+            created_at
+          )
+        `)
+        .eq('role', 'student');
+
+      if (searchTerm) {
+        query = query.ilike('full_name', `%${searchTerm}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const formatted = data.map(profile => {
+        const latestAssessment = profile.assessments?.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+        return {
+          id: profile.id,
+          name: profile.full_name,
+          category: latestAssessment?.category || 'Not Assessed',
+          priority: latestAssessment?.priority_score || 'Routine',
+          lastSession: latestAssessment ? new Date(latestAssessment.created_at).toLocaleDateString() : 'None',
+          status: latestAssessment?.status || 'Active'
+        };
+      });
+
+      setPatients(formatted);
+    } catch (err) {
+      console.error('Error fetching patients:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusStyle = (status) => {
     switch (status) {
-      case 'Resolved': return { bg: '#dcfce7', color: '#15803d' };
+      case 'resolved': return { bg: '#dcfce7', color: '#15803d' };
+      case 'in-progress': return { bg: '#e0e7ff', color: '#4338ca' };
       case 'Needs Follow-up': return { bg: '#fef3c7', color: '#92400e' };
       case 'Dismissed': return { bg: '#f1f5f9', color: '#64748b' };
-      case 'In Progress': return { bg: '#e0e7ff', color: '#4338ca' };
+      case 'Active': return { bg: '#e0e7ff', color: '#4338ca' };
       default: return { bg: '#f1f5f9', color: '#444' };
     }
   };
@@ -77,6 +171,62 @@ const PatientLogs = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
+      {/* ── PROGRESS TREND MODAL ─────────────────────────────────────── */}
+      {showProgress && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 100, padding: '2rem'
+        }}>
+          <div style={{
+            background: 'white', width: '100%', maxWidth: '900px',
+            borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ padding: '2rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b' }}>Clinical Trend: {activePatient?.name}</h2>
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Symptom severity tracking over time (higher = more intense)</p>
+              </div>
+              <button onClick={() => setShowProgress(false)} style={{ background: '#f8fafc', border: 'none', padding: '0.75rem', borderRadius: '12px', cursor: 'pointer' }}>
+                <X size={24} color="#64748b" />
+              </button>
+            </div>
+            
+            <div style={{ padding: '2rem', height: '450px' }}>
+              {chartLoading ? (
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <p>Loading clinical data...</p>
+                </div>
+              ) : historicalData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={historicalData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis domain={[0, 10]} tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="Anxiety" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="Depression" stroke="#3b82f6" strokeWidth={3} dot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="Academic Stress" stroke="#ec4899" strokeWidth={3} dot={{ r: 6 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', borderRadius: '16px' }}>
+                  <History size={48} color="#94a3b8" style={{ marginBottom: '1rem' }} />
+                  <p style={{ color: '#64748b' }}>No clinical history found for this student.</p>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ padding: '1.5rem 2rem', background: '#f8fafc', borderTop: '1px solid #f1f5f9', textAlign: 'right' }}>
+              <button className="btn-primary" onClick={() => setShowProgress(false)}>Close Analysis</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ACTIVE SESSION TIMER BANNER ─────────────────────────────────── */}
       {ongoingSession && (
         <div style={{
@@ -136,10 +286,10 @@ const PatientLogs = () => {
       {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem' }}>
         {[
-          { label: 'Total Managed', value: '156', icon: User, color: '#3b82f6' },
-          { label: 'Pending Follow-up', value: '12', icon: Clock, color: '#f59e0b' },
-          { label: 'Emergency Handled', value: '4', icon: Siren, color: '#ef4444' },
-          { label: 'Resolved (Month)', value: '42', icon: CheckCircle2, color: '#10b981' },
+          { label: 'Total Managed', value: stats.managed.toString(), icon: User, color: '#3b82f6' },
+          { label: 'Pending Follow-up', value: stats.pending.toString(), icon: Clock, color: '#f59e0b' },
+          { label: 'Emergency Handled', value: stats.emergency.toString(), icon: Siren, color: '#ef4444' },
+          { label: 'Resolved (Month)', value: stats.resolved.toString(), icon: CheckCircle2, color: '#10b981' },
         ].map((stat) => (
           <div key={stat.label} className="card" style={{ padding: '1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
@@ -160,27 +310,24 @@ const PatientLogs = () => {
             <Search size={18} color="var(--text-light)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
             <input 
               type="text" 
-              placeholder="Search by student name, ID or record ID..." 
+              placeholder="Search students..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.75rem', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '0.9rem', outline: 'none' }}
             />
           </div>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', borderRadius: '10px', border: '1px solid var(--border-color)', color: 'var(--text-light)', fontWeight: 600, fontSize: '0.9rem' }}>
-            <Filter size={18} /> Filter By
-          </button>
         </div>
 
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase' }}>Student Name</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase' }}>Category</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase' }}>Priority</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase' }}>Last Session</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase' }}>Status</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
+                <th style={{ padding: '1rem 1.5rem' }}>Student Name</th>
+                <th style={{ padding: '1rem 1.5rem' }}>Category</th>
+                <th style={{ padding: '1rem 1.5rem' }}>Priority</th>
+                <th style={{ padding: '1rem 1.5rem' }}>Last Session</th>
+                <th style={{ padding: '1rem 1.5rem' }}>Status</th>
+                <th style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -200,35 +347,29 @@ const PatientLogs = () => {
                       {p.priority}
                     </span>
                   </td>
-                  <td style={{ padding: '1rem 1.5rem', fontSize: '0.9rem', color: 'var(--text-light)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <History size={14} /> {p.lastSession}
-                    </div>
-                  </td>
+                  <td style={{ padding: '1rem 1.5rem', fontSize: '0.9rem', color: 'var(--text-light)' }}>{p.lastSession}</td>
                   <td style={{ padding: '1rem 1.5rem' }}>
                     <span style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, ...getStatusStyle(p.status) }}>
                       {p.status}
                     </span>
                   </td>
                   <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gapadding: '0.5rem', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      <button 
+                        onClick={() => fetchHistoricalData(p)}
+                        style={{ color: '#8b5cf6', padding: '0.5rem', borderRadius: '6px', background: '#f5f3ff', border: 'none', cursor: 'pointer' }} 
+                        title="View Progress">
+                        <ChartIcon size={18} />
+                      </button>
                       <button 
                         onClick={() => openSOAP(p)}
-                        style={{ color: 'var(--primary-blue)', padding: '0.5rem', borderRadius: '6px', background: '#eff6ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
-                        title="Generate AI SOAP">
+                        style={{ color: 'var(--primary-blue)', padding: '0.5rem', borderRadius: '6px', background: '#eff6ff', border: 'none', cursor: 'pointer' }}>
                         <Sparkles size={18} />
                       </button>
                       <button 
                         onClick={() => startSession(p)}
-                        style={{ color: '#4338ca', padding: '0.5rem', borderRadius: '6px', background: '#e0e7ff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
-                        title="Start Session">
+                        style={{ color: '#4338ca', padding: '0.5rem', borderRadius: '6px', background: '#e0e7ff', border: 'none', cursor: 'pointer' }}>
                         <Clock size={18} />
-                      </button>
-                      <button style={{ color: '#15803d', padding: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Schedule Follow-up">
-                        <Calendar size={18} />
-                      </button>
-                      <button style={{ color: '#ef4444', padding: '0.5rem', borderRadius: '6px', background: 'transparent', border: 'none' }} title="Dismiss Patient">
-                        <XCircle size={18} />
                       </button>
                     </div>
                   </td>
@@ -242,6 +383,7 @@ const PatientLogs = () => {
         isOpen={showSOAP} 
         onClose={() => setShowSOAP(false)} 
         patientName={activePatient?.name} 
+        studentId={activePatient?.id}
       />
 
       <style>{`
@@ -259,14 +401,3 @@ const PatientLogs = () => {
 };
 
 export default PatientLogs;
-
-const Siren = ({ size, color }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M7 12h10" />
-    <path d="M5 12h2" />
-    <path d="M17 12h2" />
-    <path d="M12 7v5" />
-    <path d="M12 17v2" />
-    <circle cx="12" cy="12" r="10" />
-  </svg>
-);

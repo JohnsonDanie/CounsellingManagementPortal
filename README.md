@@ -60,5 +60,23 @@ For detailed guides on the specialized components in this repository:
 - Integrated Crisis Response protocols
 - Row-Level Security (RLS) via Supabase
 
+## 🛡️ Scheduling Engine & Clinical Safety
+
+The portal implements a specialized scheduling engine designed for high-density clinical environments.
+
+### 1. Mandatory Constraints
+- **Minimum Duration**: 90 Minutes (enforced for all manual and auto-bookings).
+- **Buffer Period**: 2 Minutes (mandatory administrative reset time between sessions).
+- **Clinical Break**: Hard-blocked 12:00 PM - 1:00 PM for lunch/wellness.
+
+### 2. Emergency Auto-Allocation
+Students flagged with **Urgent** or **Emergency** priority are automatically allocated to the earliest available slot by the system. Counselors cannot manually reschedule these high-priority sessions to ensure clinical safety compliance.
+
+### 3. Greedy Optimization
+When manually scheduling **Routine** students, the system highlights **Optimal Slots** (those adjacent to existing sessions). This "Greedy" strategy maximizes counselor utilization by preventing 30-60 minute "dead zones" in the diary.
+
+### 4. Counselor Privilege
+Counselors can read a student's assessment story and manually up-size a session (90m → 120m → 180m) using the duration selector in the **Routine Referrals** sidebar before booking.
+
 ---
 © 2026 Nile University • Clinical Management Portal

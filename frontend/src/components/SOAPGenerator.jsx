@@ -5,11 +5,15 @@ import {
   Mic, Square, Paperclip, Upload, Play, Headphones
 } from 'lucide-react';
 import { generateSOAPNote, transcribeAudio } from '../lib/geminiService';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
-const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
+const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student", studentId, appointmentId }) => {
+  const { user } = useAuth();
   const [rawNotes, setRawNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [soap, setSoap] = useState({
     subjective: '',
     objective: '',
@@ -24,6 +28,8 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
   const mediaRecorderRef = useRef(null);
   const timerRef = useRef(null);
   const fileInputRef = useRef(null);
+
+
 
   if (!isOpen) return null;
 
@@ -45,15 +51,69 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student" }) => {
     }
   };
 
+  const logAudit = async (action, resourceId = null) => {
+    try {
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: action,
+        resource_type: 'clinical_note',
+        resource_id: resourceId,
+        details: `Action ${action} on Clinical Note`
+      });
+    } catch (err) {
+      console.error("Failed to log audit event:", err);
+    }
+  };
+
+  const handleCopy = async () => {
+    const textToCopy = `S: ${soap.subjective}\nO: ${soap.objective}\nA: ${soap.assessment}\nP: ${soap.plan}`;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      await logAudit('EXPORT');
+      alert("Note copied to clipboard. Audit log recorded.");
+    } catch (err) {
+      console.error("Failed to copy", err);
+    }
+  };
+
   const handleFieldChange = (field, value) => {
     setSoap(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = () => {
-    // In a real app, this would save to Supabase/DB
-    console.log("Saving SOAP Note:", soap);
-    alert("SOAP Note saved to patient record successfully!");
-    onClose();
+  const handleSave = async () => {
+    if (!soap.subjective || !soap.plan) {
+      setError("Please generate or enter SOAP contents before saving.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      console.log('Saving SOAP Note:', { appointmentId, studentId, counselorId: user?.id });
+      
+      const { data, error: saveError } = await supabase.from('clinical_notes').insert({
+        appointment_id: appointmentId || null,
+        student_id: studentId || null,
+        counselor_id: user?.id,
+        soap_json: soap,
+        raw_transcript: rawNotes
+      }).select().single();
+
+      if (saveError) {
+        console.error('Supabase Insert Error:', saveError);
+        throw saveError;
+      }
+
+      await logAudit('EDIT', data?.id);
+
+      alert("SOAP Note saved to clinical record successfully!");
+      onClose();
+    } catch (err) {
+      console.error('Error saving clinical note:', err);
+      setError("Failed to save note: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Recording Logic
@@ -280,8 +340,8 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Clinical Output (Editable)</label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button title="Copy to clipboard" style={{ padding: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b' }}><Copy size={16} /></button>
-                <button title="Reset fields" style={{ padding: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b' }}><RotateCcw size={16} /></button>
+                <button onClick={handleCopy} title="Copy to clipboard" style={{ padding: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b', cursor: 'pointer' }}><Copy size={16} /></button>
+                <button onClick={() => setSoap({subjective: '', objective: '', assessment: '', plan: ''})} title="Reset fields" style={{ padding: '0.4rem', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#64748b', cursor: 'pointer' }}><RotateCcw size={16} /></button>
               </div>
             </div>
 
@@ -326,8 +386,10 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
             className="btn-secondary" style={{ padding: '0.75rem 1.5rem' }}>Cancel</button>
           <button 
             onClick={handleSave}
-            className="btn-primary" style={{ padding: '0.75rem 2rem', gap: '0.6rem' }}>
-            <Save size={18} /> Finalize Session Note
+            disabled={isSaving}
+            className="btn-primary" style={{ padding: '0.75rem 2rem', gap: '0.6rem', opacity: isSaving ? 0.7 : 1 }}>
+            {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            {isSaving ? 'Saving...' : 'Finalize Session Note'}
           </button>
         </div>
 

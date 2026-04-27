@@ -9,18 +9,23 @@ const Auth = () => {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState(null);
   const { login, signup } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isLogin) {
-      await login(email, password, role);
-    } else {
-      await signup(email, password, role, fullName);
+    setError(null);
+    try {
+      if (isLogin) {
+        await login(email, password);
+      } else {
+        await signup(email, password, role, fullName);
+      }
+      navigate('/');
+    } catch (err) {
+      setError(err.message || 'Authentication failed. Please check your credentials.');
     }
-    // Auth logic handled, redirection done in App component
-    navigate('/');
   };
 
   return (
@@ -32,40 +37,57 @@ const Auth = () => {
           <p style={{ color: 'var(--text-light)' }}>{isLogin ? 'Welcome back! Please sign in.' : 'Create an account to get started.'}</p>
         </div>
 
+        {error && (
+          <div style={{
+            padding: '1rem',
+            background: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: '8px',
+            color: '#b91c1c',
+            fontSize: '0.85rem',
+            marginBottom: '1.5rem',
+            textAlign: 'center'
+          }}>
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
-          <div>
-            <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>I am a...</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div 
-                onClick={() => setRole('student')}
-                style={{ 
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '1rem',
-                  border: role === 'student' ? '2px solid var(--primary-blue)' : '2px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer', backgroundColor: role === 'student' ? 'var(--accent-light-blue)' : 'white',
-                  color: role === 'student' ? 'var(--primary-blue)' : 'var(--text-light)'
-                }}
-              >
-                <GraduationCap size={24} />
-                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Student</span>
-              </div>
-              <div 
-                onClick={() => setRole('counselor')}
-                style={{ 
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '1rem',
-                  border: role === 'counselor' ? '2px solid var(--primary-blue)' : '2px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer', backgroundColor: role === 'counselor' ? 'var(--accent-light-blue)' : 'white',
-                  color: role === 'counselor' ? 'var(--primary-blue)' : 'var(--text-light)'
-                }}
-              >
-                <Stethoscope size={24} />
-                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Counselor</span>
+          {!isLogin && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>I am a...</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div 
+                  onClick={() => setRole('student')}
+                  style={{ 
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '1rem',
+                    border: role === 'student' ? '2px solid var(--primary-blue)' : '2px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)', cursor: 'pointer', backgroundColor: role === 'student' ? 'var(--accent-light-blue)' : 'white',
+                    color: role === 'student' ? 'var(--primary-blue)' : 'var(--text-light)'
+                  }}
+                >
+                  <GraduationCap size={24} />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Student</span>
+                </div>
+                <div 
+                  onClick={() => setRole('counselor')}
+                  style={{ 
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '1rem',
+                    border: role === 'counselor' ? '2px solid var(--primary-blue)' : '2px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)', cursor: 'pointer', backgroundColor: role === 'counselor' ? 'var(--accent-light-blue)' : 'white',
+                    color: role === 'counselor' ? 'var(--primary-blue)' : 'var(--text-light)'
+                  }}
+                >
+                  <Stethoscope size={24} />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Counselor</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {!isLogin && (
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1.5rem', marginTop: '0.5rem' }}>
               <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 500, marginBottom: '0.5rem' }}>Full Name</label>
               <input 
                 type="text" 

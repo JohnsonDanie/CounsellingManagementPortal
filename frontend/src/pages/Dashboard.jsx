@@ -43,8 +43,9 @@ const Dashboard = () => {
   const [activePatient, setActivePatient] = useState(null);
   
   // Timer States
-  const [ongoingSession, setOngoingSession] = useState(null); // { id, name }
-  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [ongoingSession, setOngoingSession] = useState(null); 
+  const [timerSeconds, setTimerSeconds] = useState(0); 
+
 
   useEffect(() => {
     let interval;
@@ -81,15 +82,42 @@ const Dashboard = () => {
   };
 
   const [appointments, setAppointments] = useState([]);
+  const [queue, setQueue] = useState([]);
+  const [metrics, setMetrics] = useState({ resolved: 0, active: 0, emergencies: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let channelCleanup = null;
     if (user) {
-      fetchTodayAppointments();
+      fetchDashboardData();
+
+      const setupRealtime = async () => {
+        const { supabase } = await import('../lib/supabase');
+        const channel = supabase.channel('realtime-queue')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'crisis_flags' },
+            (payload) => {
+              console.log('Realtime Queue Update Received:', payload);
+              fetchDashboardData();
+            }
+          )
+          .subscribe();
+        
+        return () => supabase.removeChannel(channel);
+      };
+      
+      setupRealtime().then(cleanup => {
+        channelCleanup = cleanup;
+      });
     }
+
+    return () => {
+      if (channelCleanup) channelCleanup();
+    };
   }, [user]);
 
-  const fetchTodayAppointments = async () => {
+  const fetchDashboardData = async () => {
     setLoading(true);
     try {
       const { supabase } = await import('../lib/supabase');
@@ -98,7 +126,8 @@ const Dashboard = () => {
       const todayEnd = new Date();
       todayEnd.setHours(23, 59, 59, 999);
 
-      const { data, error } = await supabase
+      // 1. Fetch Today's Appointments
+      const { data: apptData, error: apptError } = await supabase
         .from('appointments')
         .select(`
           id,
@@ -106,6 +135,7 @@ const Dashboard = () => {
           duration_minutes,
           session_type,
           student:student_id (
+            id,
             full_name
           )
         `)
@@ -115,27 +145,79 @@ const Dashboard = () => {
         .neq('status', 'cancelled')
         .order('appointment_time', { ascending: true });
 
-      if (error) throw error;
+      if (apptError) throw apptError;
       
-      const formatted = data.map(appt => ({
+      const formattedAppts = apptData.map(appt => ({
         id: appt.id,
         name: appt.student?.full_name || 'Generic Student',
+        studentId: appt.student?.id,
         time: new Date(appt.appointment_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
         source: 'System Booking',
         type: 'standard'
       }));
-      setAppointments(formatted);
+      setAppointments(formattedAppts);
+
+      // 2. Fetch Digital Queue (Urgent/Emergency not yet attended)
+      const { data: queueData } = await supabase
+        .from('crisis_flags')
+        .select(`
+          id,
+          assessment:assessment_id (
+            category,
+            priority_score,
+            student_id,
+            description:symptoms_description
+          ),
+          student_profile:student_id (
+            full_name
+          )
+        `)
+        .eq('referral_status', 'Pending')
+        .order('flagged_at', { ascending: true });
+
+      const formattedQueue = (queueData || []).map((q, idx) => ({
+        id: q.id,
+        position: idx + 1,
+        name: q.student_profile?.full_name || 'Anonymous',
+        priority: q.assessment?.priority_score || 'Urgent',
+        waitTime: '~15 min', // static wait time for demo
+        category: q.assessment?.category || 'General'
+      }));
+      setQueue(formattedQueue);
+
+      // 3. Fetch Weekly Metrics
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const { count: resolvedCount } = await supabase
+        .from('assessments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'resolved')
+        .gte('created_at', weekAgo.toISOString());
+
+      const { count: activeCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'student');
+
+      const { count: emergencyCount } = await supabase
+        .from('assessments')
+        .select('*', { count: 'exact', head: true })
+        .eq('priority_score', 'Emergency')
+        .gte('created_at', weekAgo.toISOString());
+
+      setMetrics({
+        resolved: resolvedCount || 0,
+        active: activeCount || 0,
+        emergencies: emergencyCount || 0
+      });
+
     } catch (err) {
-      console.error('Error fetching dashboard appointments:', err);
+      console.error('Error fetching dashboard data:', err);
     } finally {
       setLoading(false);
     }
   };
-
-  const queue = [
-    { position: 1, name: 'Chidi Eze', priority: 'Urgent', waitTime: '~20 min', category: 'Academic' },
-    { position: 2, name: 'Fatima Al-Rashid', priority: 'Urgent', waitTime: '~35 min', category: 'Individual' },
-  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -184,18 +266,30 @@ const Dashboard = () => {
               <p style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.7, marginBottom: '0.2rem' }}>Duration</p>
               <p style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.05em' }}>{formatTime(timerSeconds)}</p>
             </div>
-            <button 
-              onClick={finishSession}
-              style={{
-                background: '#ef4444', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '12px',
-                fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none',
-                cursor: 'pointer', transition: 'all 0.2s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              <StopCircle size={18} /> Finish Session
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button 
+                onClick={() => openSOAP(ongoingSession)}
+                style={{
+                  background: 'rgba(255,255,255,0.15)', color: 'white', padding: '0.75rem 1.25rem', borderRadius: '12px',
+                  fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid rgba(255,255,255,0.3)',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+              >
+                <Sparkles size={18} /> Open SOAP Note
+              </button>
+              <button 
+                onClick={finishSession}
+                style={{
+                  background: '#ef4444', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '12px',
+                  fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <StopCircle size={18} /> Finish Session
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -313,9 +407,9 @@ const Dashboard = () => {
             <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.5rem' }}>Weekly Metrics</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               {[
-                { icon: CheckCircle2, bg: '#dcfce7', color: '#15803d', label: 'Resolved Cases', value: '18 Students' },
-                { icon: User, bg: '#e0e7ff', color: '#4338ca', label: 'Active Patients', value: '24 Total' },
-                { icon: PhoneCall, bg: '#fee2e2', color: '#b91c1c', label: 'Emergencies', value: '4 This Week' },
+                { icon: CheckCircle2, bg: '#dcfce7', color: '#15803d', label: 'Resolved Cases', value: `${metrics.resolved} Students` },
+                { icon: User, bg: '#e0e7ff', color: '#4338ca', label: 'Active Patients', value: `${metrics.active} Total` },
+                { icon: PhoneCall, bg: '#fee2e2', color: '#b91c1c', label: 'Emergencies', value: `${metrics.emergencies} This Week` },
               ].map((m, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: m.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -348,6 +442,8 @@ const Dashboard = () => {
         isOpen={showSOAP} 
         onClose={() => setShowSOAP(false)} 
         patientName={activePatient?.name} 
+        studentId={activePatient?.studentId}
+        appointmentId={activePatient?.id}
       />
       <style>{`
         @keyframes ping {
