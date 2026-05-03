@@ -380,15 +380,23 @@ const Schedule = () => {
         {/* Right Panel - Calendar Grid Mock */}
         <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) repeat(2, 0.8fr)', borderBottom: '1px solid var(--border-color)' }}>
-            {[
-              { day: 'MON', date: '12' },
-              { day: 'TUE', date: '13' },
-              { day: 'WED', date: '14' },
-              { day: 'THU', date: '15' },
-              { day: 'FRI', date: '16' },
-              { day: 'SAT', date: '17', disabled: true },
-              { day: 'SUN', date: '18', disabled: true }
-            ].map((d, i) => (
+            {/* FIX-09: Compute real current week dates instead of hardcoded values */}
+            {(() => {
+              const today = new Date();
+              const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon...
+              const monday = new Date(today);
+              monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+              return Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                return {
+                  day: d.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase(),
+                  date: d.getDate().toString(),
+                  disabled: i >= 5,
+                  isToday: d.toDateString() === today.toDateString(),
+                };
+              });
+            })().map((d, i) => (
               <div key={i} style={{ padding: '1.5rem', textAlign: 'center', backgroundColor: d.disabled ? '#f8fafc' : 'white', borderRight: i < 6 ? '1px solid var(--border-color)' : 'none' }}>
                 <p style={{ fontSize: '0.75rem', fontWeight: 600, color: d.disabled ? '#cbd5e1' : 'var(--text-light)', marginBottom: '0.25rem' }}>{d.day}</p>
                 <h3 style={{ fontSize: '1.5rem', color: d.disabled ? '#cbd5e1' : 'var(--text-dark)' }}>{d.date}</h3>

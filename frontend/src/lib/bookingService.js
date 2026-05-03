@@ -34,8 +34,10 @@ export const getAvailableSlots = async (counselorId, date, durationMinutes = 60)
     .eq('is_active', true)
     .maybeSingle();
 
+  let defaultAvailability = availability;
   if (availError || !availability) {
-    return [];
+    // Demo Fallback: If counselor hasn't set hours yet, assume 9 AM to 5 PM
+    defaultAvailability = { start_time: '09:00', end_time: '17:00' };
   }
 
   // 2. Fetch all existing, non-cancelled appointments for this date
@@ -59,8 +61,8 @@ export const getAvailableSlots = async (counselorId, date, durationMinutes = 60)
 
   // 3. Algorithm: Slot Generation & Filtering
   const slots = [];
-  const [startH, startM] = availability.start_time.split(':');
-  const [endH, endM] = availability.end_time.split(':');
+  const [startH, startM] = defaultAvailability.start_time.split(':');
+  const [endH, endM] = defaultAvailability.end_time.split(':');
   
   let currentPointer = new Date(date);
   currentPointer.setHours(parseInt(startH), parseInt(startM), 0, 0);

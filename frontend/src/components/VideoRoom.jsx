@@ -34,9 +34,9 @@ const VideoRoom = ({ isOpen, onClose, roomName, patientName }) => {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(34, 197, 94, 0.1)', padding: '0.5rem 1rem', borderRadius: '99px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-              <ShieldCheck size={14} color="#22c55e" />
-              <span style={{ fontSize: '0.7rem', color: '#22c55e', fontWeight: 700 }}>HIPAA COMPLIANT MODE</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.08)', padding: '0.5rem 1rem', borderRadius: '99px', border: '1px solid rgba(255,255,255,0.15)' }}>
+              <ShieldCheck size={14} color="#94a3b8" />
+              <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700 }}>PRIVATE SESSION</span>
             </div>
             <button 
               onClick={onClose}

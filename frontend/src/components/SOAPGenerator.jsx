@@ -29,7 +29,13 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student", studentId
   const timerRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // FIX-13: In-component toast replaces browser alert()
+  const [toast, setToast] = useState(null);
 
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   if (!isOpen) return null;
 
@@ -70,7 +76,7 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student", studentId
     try {
       await navigator.clipboard.writeText(textToCopy);
       await logAudit('EXPORT');
-      alert("Note copied to clipboard. Audit log recorded.");
+      showToast('Note copied to clipboard. Audit log recorded.');
     } catch (err) {
       console.error("Failed to copy", err);
     }
@@ -88,9 +94,7 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student", studentId
 
     setIsSaving(true);
     try {
-      const { supabase } = await import('../lib/supabase');
-      console.log('Saving SOAP Note:', { appointmentId, studentId, counselorId: user?.id });
-      
+      // FIX-05: Removed duplicate dynamic import — using the static supabase import at top
       const { data, error: saveError } = await supabase.from('clinical_notes').insert({
         appointment_id: appointmentId || null,
         student_id: studentId || null,
@@ -105,8 +109,7 @@ const SOAPGenerator = ({ isOpen, onClose, patientName = "New Student", studentId
       }
 
       await logAudit('EDIT', data?.id);
-
-      alert("SOAP Note saved to clinical record successfully!");
+      showToast('SOAP Note saved to clinical record successfully!');
       onClose();
     } catch (err) {
       console.error('Error saving clinical note:', err);
@@ -412,6 +415,19 @@ Example: Student arrived late and avoided eye contact. She said 'I feel like nob
           }
         `}</style>
       </div>
+      {/* FIX-13: Toast notification — replaces alert() */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)',
+          background: toast.type === 'success' ? '#10b981' : '#ef4444',
+          color: 'white', padding: '0.875rem 1.75rem', borderRadius: '12px',
+          fontWeight: 600, fontSize: '0.9rem', zIndex: 2000,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          whiteSpace: 'nowrap', animation: 'slideUp 0.3s ease'
+        }}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 };

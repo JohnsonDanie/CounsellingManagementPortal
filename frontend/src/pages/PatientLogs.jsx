@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, Filter, User, Calendar, CheckCircle2, XCircle, Clock,
+  Search, User, Calendar, CheckCircle2, Clock,
   History, Sparkles, StopCircle, Siren, LineChart as ChartIcon, X
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,6 +8,19 @@ import SOAPGenerator from '../components/SOAPGenerator';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+
+// FIX-08: Colour palette covers all 8 Assessment symptom types
+const CHART_COLORS = {
+  'Anxiety': '#8b5cf6',
+  'Depression': '#3b82f6',
+  'Academic Stress': '#ec4899',
+  'Personal Issues': '#f59e0b',
+  'Social Problems': '#10b981',
+  'Career Concerns': '#06b6d4',
+  'Family Conflict': '#ef4444',
+  'Grief / Loss': '#64748b',
+  'Overall Mood': '#1e293b',
+};
 
 const PatientLogs = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,7 +109,7 @@ const PatientLogs = () => {
       const { supabase } = await import('../lib/supabase');
       
       const { count: managedCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'student');
-      const { count: pendingCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'in-progress');
+      const { count: pendingCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'in_queue');
       const { count: emergencyCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('priority_score', 'Emergency');
       const { count: resolvedCount } = await supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
 
@@ -203,13 +216,24 @@ const PatientLogs = () => {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} />
                     <YAxis domain={[0, 10]} tick={{ fontSize: 12, fill: '#64748b' }} />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                     />
                     <Legend />
-                    <Line type="monotone" dataKey="Anxiety" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 6 }} />
-                    <Line type="monotone" dataKey="Depression" stroke="#3b82f6" strokeWidth={3} dot={{ r: 6 }} />
-                    <Line type="monotone" dataKey="Academic Stress" stroke="#ec4899" strokeWidth={3} dot={{ r: 6 }} />
+                    {/* FIX-08: Dynamic lines — one per symptom key actually present in data */}
+                    {Object.keys(historicalData[0])
+                      .filter(k => k !== 'date')
+                      .map(key => (
+                        <Line
+                          key={key}
+                          type="monotone"
+                          dataKey={key}
+                          stroke={CHART_COLORS[key] || '#94a3b8'}
+                          strokeWidth={2}
+                          dot={{ r: 4 }}
+                        />
+                      ))
+                    }
                   </LineChart>
                 </ResponsiveContainer>
               ) : (

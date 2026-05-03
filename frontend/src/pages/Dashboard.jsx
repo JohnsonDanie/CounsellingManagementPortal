@@ -3,7 +3,7 @@ import {
   Clock, AlertTriangle, BookOpen, AlertCircle, CheckCircle2,
   User, PhoneCall, Workflow, Siren, Users, ArrowRight,
   ClipboardList, XCircle, ChevronDown, UserCheck, Sparkles, FileText,
-  Pause, Play, StopCircle
+  Pause, Play, StopCircle, Video
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import SOAPGenerator from '../components/SOAPGenerator';
@@ -153,7 +153,8 @@ const Dashboard = () => {
         studentId: appt.student?.id,
         time: new Date(appt.appointment_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
         source: 'System Booking',
-        type: 'standard'
+        type: 'standard',
+        session_type: appt.session_type
       }));
       setAppointments(formattedAppts);
 
@@ -361,6 +362,13 @@ const Dashboard = () => {
                     {getSourceBadge(p.type, p.source)}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {p.session_type === 'virtual' && (
+                      <button 
+                        onClick={() => window.open(`https://meet.jit.si/portal-session-${p.id}#config.prejoinPageEnabled=false&config.disableDeepLinking=true`, '_blank')}
+                        className="btn-primary" style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#059669', border: 'none' }}>
+                        <Video size={14} /> Join
+                      </button>
+                    )}
                     <button 
                       onClick={() => openSOAP(p)}
                       className="btn-secondary" style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -405,23 +413,39 @@ const Dashboard = () => {
           {/* Weekly Metrics */}
           <div className="card" style={{ background: '#f8fafc', border: 'none' }}>
             <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.5rem' }}>Weekly Metrics</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              {[
-                { icon: CheckCircle2, bg: '#dcfce7', color: '#15803d', label: 'Resolved Cases', value: `${metrics.resolved} Students` },
-                { icon: User, bg: '#e0e7ff', color: '#4338ca', label: 'Active Patients', value: `${metrics.active} Total` },
-                { icon: PhoneCall, bg: '#fee2e2', color: '#b91c1c', label: 'Emergencies', value: `${metrics.emergencies} This Week` },
-              ].map((m, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: m.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <m.icon size={18} color={m.color} />
+            {/* FIX-19: Show skeleton pulse while metrics are loading */}
+            {loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {[1, 2, 3].map(i => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#e2e8f0', animation: 'skeletonPulse 1.5s ease-in-out infinite' }} />
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div style={{ height: '12px', borderRadius: '6px', background: '#e2e8f0', width: '60%', animation: 'skeletonPulse 1.5s ease-in-out infinite' }} />
+                      <div style={{ height: '10px', borderRadius: '6px', background: '#f1f5f9', width: '40%', animation: 'skeletonPulse 1.5s ease-in-out infinite' }} />
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{m.label}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{m.value}</div>
+                ))}
+                <style>{`@keyframes skeletonPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {[
+                  { icon: CheckCircle2, bg: '#dcfce7', color: '#15803d', label: 'Resolved Cases', value: `${metrics.resolved} Students` },
+                  { icon: User, bg: '#e0e7ff', color: '#4338ca', label: 'Active Patients', value: `${metrics.active} Total` },
+                  { icon: PhoneCall, bg: '#fee2e2', color: '#b91c1c', label: 'Emergencies', value: `${metrics.emergencies} This Week` },
+                ].map((m, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: m.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <m.icon size={18} color={m.color} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{m.label}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{m.value}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Referral Action Panel */}

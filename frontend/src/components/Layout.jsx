@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import WellnessBot from './WellnessBot';
+import { useAuth } from '../contexts/AuthContext';
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user } = useAuth();
+  // FIX-10: Only render the chatbot for student role
+  const isStudent = user?.user_metadata?.role === 'student';
 
   return (
     <div className="app-container">
@@ -26,6 +31,9 @@ const Layout = () => {
           <Outlet />
         </div>
       </div>
+
+      {/* FIX-10: WellnessBot persists across all student routes */}
+      {isStudent && <WellnessBot />}
     </div>
   );
 };

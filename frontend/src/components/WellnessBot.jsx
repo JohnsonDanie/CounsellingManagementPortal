@@ -4,21 +4,41 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
+const STORAGE_KEY = 'wellness_bot_messages';
+
 const WellnessBot = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: 'bot',
-      text: `Hi ${user?.user_metadata?.name?.split(' ')[0] || 'there'}! I'm your wellness companion. I'm here 24/7. Just checking in—how have you been feeling since your last session?`,
-      options: ['Much better', 'About the same', 'Feeling overwhelmed']
+  // FIX-14: Track unread state so the red dot only shows when there's a new message
+  const [hasUnread, setHasUnread] = useState(true);
+
+  const getInitialMessages = () => [{
+    id: 1,
+    sender: 'bot',
+    text: `Hi ${user?.user_metadata?.name?.split(' ')[0] || 'there'}! I'm your wellness companion. I'm here 24/7. Just checking in—how have you been feeling since your last session?`,
+    options: ['Much better', 'About the same', 'Feeling overwhelmed']
+  }];
+
+  // FIX-18: Restore conversation from sessionStorage on mount
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : getInitialMessages();
+    } catch {
+      return getInitialMessages();
     }
-  ]);
+  });
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // FIX-18: Persist conversation to sessionStorage on every message update
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch { /* storage quota */ }
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -75,14 +95,7 @@ const WellnessBot = () => {
         text: "Done. I've sent a confidential alert to your clinical counselor regarding your recent mood trend. They will be checking in on you soon. You can also book a session directly right now.",
         options: ['Book Session Now', 'Maybe later']
       };
-    } else if (input.includes('notify center') || input.includes('yes, notify my counselor')) {
-       await alertCounselor();
-       botResponse = {
-        id: Date.now(),
-        sender: 'bot',
-        text: "I've sent an update to your counselor so they are aware of this trend and can update your care plan. Please take care of yourself, and consider booking a session.",
-        options: ['Book Session Now']
-      };
+      // FIX-14: Dead 'notify center' duplicate branch removed
     } else if (input.includes('book session now')) {
       navigate('/booking');
       setIsOpen(false);
@@ -110,33 +123,57 @@ const WellnessBot = () => {
 
   const alertCounselor = async () => {
     try {
-      // 1. Fetch the student's assigned counselor or a crisis response counselor
-      const { data: cData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'counselor')
+      // 1. Get the student's latest assessment (provides the FK for crisis_flags)
+      const { data: latestAssessment } = await supabase
+        .from('assessments')
+        .select('id')
+        .eq('student_id', user.id)
+        .order('created_at', { ascending: false })
         .limit(1)
-        .single();
-      
-      if (!cData) return;
+        .maybeSingle();
 
-      // 2. Create Notification
+      // 2. Find the student's assigned counselor via their most recent appointment
+      const { data: assignedAppt } = await supabase
+        .from('appointments')
+        .select('counselor_id')
+        .eq('student_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let counselorId = assignedAppt?.counselor_id;
+
+      // 3. Fallback: pick any available counselor if no appointment exists yet
+      if (!counselorId) {
+        const { data: cData } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'counselor')
+          .limit(1)
+          .single();
+        counselorId = cData?.id;
+      }
+
+      if (!counselorId) return;
+
+      // 4. Create counselor notification
       await supabase.from('notifications').insert({
-        user_id: cData.id,
+        user_id: counselorId,
         type: 'alert',
         title: 'Negative Trend Alert',
         message: `Student ${user?.user_metadata?.name} reported feeling overwhelmed during their automated bot check-in. Review their care plan.`,
         is_read: false
       });
 
-      // 3. (Optional) Log a crisis flag for visibility on the dashboard sidebar
+      // 5. Create crisis flag — now includes assessment_id (nullable if no prior assessment)
       await supabase.from('crisis_flags').insert({
         student_id: user.id,
-        assigned_counselor_id: cData.id,
+        assigned_counselor_id: counselorId,
+        assessment_id: latestAssessment?.id || null,
         notes: 'Automated Chatbot detected worsening emotional trends. Prompt intervention recommended.',
         status: 'investigating'
       });
-      
+
     } catch (err) {
       console.error('Error notifying counselor:', err);
     }
@@ -147,7 +184,7 @@ const WellnessBot = () => {
       {/* FAB (Floating Action Button) */}
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { setIsOpen(true); setHasUnread(false); }}
           style={{
             position: 'fixed',
             bottom: '2rem',
@@ -170,11 +207,13 @@ const WellnessBot = () => {
           onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
         >
           <MessageCircle size={32} />
-          {/* Notification Dot Mock */}
-          <div style={{
-            position: 'absolute', top: '0', right: '0', width: '16px', height: '16px',
-            background: '#ef4444', borderRadius: '50%', border: '2px solid white'
-          }} />
+          {/* FIX-14: Notification dot only shown when there are unread messages */}
+          {hasUnread && (
+            <div style={{
+              position: 'absolute', top: '0', right: '0', width: '16px', height: '16px',
+              background: '#ef4444', borderRadius: '50%', border: '2px solid white'
+            }} />
+          )}
         </button>
       )}
 

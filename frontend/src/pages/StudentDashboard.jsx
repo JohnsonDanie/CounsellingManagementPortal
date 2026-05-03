@@ -3,7 +3,7 @@ import { Calendar, UserIcon, Video, AlertCircle, Clock, HeartPulse, ArrowRight, 
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import ResourceLibrary from '../components/ResourceLibrary';
-import WellnessBot from '../components/WellnessBot';
+// FIX-10: WellnessBot moved to Layout.jsx — removed import here
 
 const StudentDashboard = () => {
   const { user, assessmentResult } = useAuth();
@@ -91,7 +91,8 @@ const StudentDashboard = () => {
         id: s.id,
         title: s.session_type === 'virtual' ? 'Virtual Advisory' : 'In-Person Session',
         counselor: s.counselor?.full_name || 'Assigned Counselor',
-        time: new Date(s.appointment_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+        time: new Date(s.appointment_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
+        session_type: s.session_type  // FIX-11: pass through so Join Video button can gate on it
       }));
       setUpcomingSessions(formattedSessions);
 
@@ -335,6 +336,15 @@ const StudentDashboard = () => {
                     <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary-blue)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confirmed</p>
                     <h4 style={{ fontWeight: 600, color: 'var(--text-dark)', fontSize: '0.9rem' }}>{s.title}</h4>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-light)', marginTop: '0.2rem' }}>{s.counselor} · {s.time}</p>
+                    {/* FIX-11: Join Video Call button for virtual sessions */}
+                    {s.session_type === 'virtual' && (
+                      <button
+                        onClick={() => window.open(`https://meet.jit.si/portal-session-${s.id}#config.prejoinPageEnabled=false&config.disableDeepLinking=true`, '_blank')}
+                        style={{ marginTop: '0.6rem', width: '100%', padding: '0.5rem', borderRadius: '8px', background: 'var(--primary-blue)', color: 'white', border: 'none', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                      >
+                        <Video size={13} /> Join Video Call
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -378,45 +388,47 @@ const StudentDashboard = () => {
         {/* Right Col — Support & Resources */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           
-          {/* Counselors List */}
-          <div className="card" style={{ padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <div>
-                <h2 style={{ fontSize: '1.4rem', color: 'var(--primary-blue)', marginBottom: '0.25rem' }}>
-                  {isHighRiskVal ? 'Your Assigned Support Team' : 'Available Counselors'}
-                </h2>
-                <p style={{ color: 'var(--text-light)', fontSize: '0.875rem' }}>
-                  {isHighRiskVal ? 'The counselors below have been notified of your case.' : 'Select an available counselor to schedule your session.'}
-                </p>
+          {/* Counselors List - Only show if no upcoming sessions */}
+          {upcomingSessions.length === 0 && (
+            <div className="card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.4rem', color: 'var(--primary-blue)', marginBottom: '0.25rem' }}>
+                    {isHighRiskVal ? 'Your Assigned Support Team' : 'Available Counselors'}
+                  </h2>
+                  <p style={{ color: 'var(--text-light)', fontSize: '0.875rem' }}>
+                    {isHighRiskVal ? 'The counselors below have been notified of your case.' : 'Select an available counselor to schedule your session.'}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.25rem' }}>
-              {counselors.map((counselor) => (
-                <div
-                  key={counselor.id}
-                  style={{
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '14px',
-                    padding: '1.25rem',
-                    display: 'flex', flexDirection: 'column', gap: '0.875rem',
-                    background: 'white',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem' }}>
-                    <img src={counselor.image} alt={counselor.name} style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-dark)' }}>{counselor.name}</h4>
-                        <span className="pill" style={{ background: '#dcfce7', color: '#166534', fontSize: '0.65rem' }}>Active</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.25rem' }}>
+                {counselors.map((counselor) => (
+                  <div
+                    key={counselor.id}
+                    style={{
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '14px',
+                      padding: '1.25rem',
+                      display: 'flex', flexDirection: 'column', gap: '0.875rem',
+                      background: 'white',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem' }}>
+                      <img src={counselor.image} alt={counselor.name} style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-dark)' }}>{counselor.name}</h4>
+                          <span className="pill" style={{ background: '#dcfce7', color: '#166534', fontSize: '0.65rem' }}>Active</span>
+                        </div>
+                        <p style={{ fontSize: '0.7rem', color: 'var(--text-light)', fontWeight: 600, marginTop: '0.2rem' }}>{counselor.title}</p>
                       </div>
-                      <p style={{ fontSize: '0.7rem', color: 'var(--text-light)', fontWeight: 600, marginTop: '0.2rem' }}>{counselor.title}</p>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Recommended Resources */}
           <div className="card" style={{ padding: '2rem', border: '1px solid #bae6fd', background: 'linear-gradient(to bottom right, #ffffff, #f0f9ff)' }}>
@@ -442,7 +454,7 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      <WellnessBot />
+      {/* FIX-10: WellnessBot now lives in Layout.jsx and persists across all student routes */}
 
       <style>{`
         @keyframes pulse {

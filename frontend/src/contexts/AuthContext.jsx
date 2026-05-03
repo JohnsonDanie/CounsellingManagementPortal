@@ -11,7 +11,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // 1. Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+      if (session?.user) {
+        const allowedDomains = ['builtbysalih.com', 'nileuniversity.edu.ng'];
+        const userDomain = session.user.email?.split('@')[1];
+        
+        if (!allowedDomains.includes(userDomain)) {
+          supabase.auth.signOut();
+          setUser(null);
+          setLoading(false);
+          return;
+        }
         fetchProfile(session.user);
       } else {
         setLoading(false);
@@ -20,7 +29,17 @@ export function AuthProvider({ children }) {
 
     // 2. Listen for changes on auth state (logged in, signed out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
+      if (session?.user) {
+        const allowedDomains = ['builtbysalih.com', 'nileuniversity.edu.ng'];
+        const userDomain = session.user.email?.split('@')[1];
+        
+        if (!allowedDomains.includes(userDomain)) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setLoading(false);
+          alert("Unauthorized Domain: Please use your university email.");
+          return;
+        }
         fetchProfile(session.user);
       } else {
         setUser(null);
@@ -77,6 +96,7 @@ export function AuthProvider({ children }) {
       email,
       password,
       options: {
+        emailRedirectTo: import.meta.env.VITE_APP_URL || window.location.origin,
         data: {
           role: role,
           full_name: fullName,
@@ -84,7 +104,23 @@ export function AuthProvider({ children }) {
       }
     });
     if (error) throw error;
-    
+
+    // FIX-02: Create the profiles row immediately so fetchProfile() never fails
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: data.user.id,
+          full_name: fullName,
+          role: role,
+          email: email,
+        });
+      if (profileError) {
+        // Non-fatal: profile may already exist via DB trigger
+        console.warn('Profile row creation warning:', profileError.message);
+      }
+    }
+
     setAssessmentResult(null);
     localStorage.removeItem('assessmentResult');
     return data;
@@ -103,12 +139,34 @@ export function AuthProvider({ children }) {
     localStorage.setItem('assessmentResult', JSON.stringify(result));
   };
 
+  const signInWithGoogle = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: import.meta.env.VITE_APP_URL || window.location.origin,
+        queryParams: {
+          prompt: 'select_account',
+        },
+      }
+    });
+    if (error) throw error;
+    return data;
+  };
+
+  const isAllowedDomain = (email) => {
+    const allowedDomains = ['builtbysalih.com', 'nileuniversity.edu.ng'];
+    const domain = email.split('@')[1];
+    return allowedDomains.includes(domain);
+  };
+
   const value = {
     user,
     loading,
     login,
     signup,
     logout,
+    signInWithGoogle,
+    isAllowedDomain,
     assessmentResult,
     setAssessmentComplete,
   };

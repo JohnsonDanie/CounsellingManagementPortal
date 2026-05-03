@@ -61,12 +61,17 @@ const MainRedirect = () => {
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Fallback for unknown roles: if we're already at /auth, don't redirect back to /auth
-  return <div style={{ padding: '2rem', textAlign: 'center' }}>
-    <h3>Account Configuration Required</h3>
-    <p>Your account does not have a designated role. Please contact an administrator.</p>
-    <button onClick={() => window.location.href = '/auth'} className="btn-secondary">Back to Login</button>
-  </div>;
+  // FIX-17: Polished unknown-role fallback card
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc' }}>
+      <div style={{ background: 'white', borderRadius: '20px', padding: '3rem 2.5rem', maxWidth: '420px', width: '90%', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.08)', border: '1px solid #f1f5f9' }}>
+        <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: '#fef3c7', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: '1.75rem' }}>⚠️</div>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.75rem' }}>Account Setup Required</h2>
+        <p style={{ color: '#64748b', lineHeight: 1.6, marginBottom: '1.75rem', fontSize: '0.9rem' }}>Your account doesn't have a role assigned yet. Please contact your system administrator to resolve this.</p>
+        <button onClick={() => window.location.href = '/auth'} className="btn-secondary" style={{ width: '100%', padding: '0.875rem' }}>Back to Login</button>
+      </div>
+    </div>
+  );
 };
 
 // ── App ────────────────────────────────────────────────────────────────────
@@ -74,9 +79,12 @@ function App() {
   const { user, loading } = useAuth();
 
   if (loading) {
+    // FIX-16: Branded animated spinner instead of plain text
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        Loading...
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: '1.25rem', background: '#f8fafc' }}>
+        <div style={{ width: '52px', height: '52px', borderRadius: '50%', border: '4px solid #e2e8f0', borderTopColor: '#235291', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ color: '#64748b', fontWeight: 600, fontSize: '0.9rem', letterSpacing: '0.02em' }}>Loading Portal...</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
