@@ -31,13 +31,17 @@ export const getAvailableSlots = async (counselorId, date, durationMinutes = 60)
     .select('*')
     .eq('counselor_id', counselorId)
     .eq('day_of_week', dayOfWeek)
-    .eq('is_active', true)
     .maybeSingle();
 
-  let defaultAvailability = availability;
+  let defaultAvailability;
   if (availError || !availability) {
     // Demo Fallback: If counselor hasn't set hours yet, assume 9 AM to 5 PM
     defaultAvailability = { start_time: '09:00', end_time: '17:00' };
+  } else if (!availability.is_active) {
+    // Counselor explicitly disabled this day
+    return [];
+  } else {
+    defaultAvailability = availability;
   }
 
   // 2. Fetch all existing, non-cancelled appointments for this date

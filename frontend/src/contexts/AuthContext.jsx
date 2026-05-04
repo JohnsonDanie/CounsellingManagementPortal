@@ -10,22 +10,28 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // 1. Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const allowedDomains = ['builtbysalih.com', 'nileuniversity.edu.ng'];
-        const userDomain = session.user.email?.split('@')[1];
-        
-        if (!allowedDomains.includes(userDomain)) {
-          supabase.auth.signOut();
-          setUser(null);
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          const allowedDomains = ['builtbysalih.com', 'nileuniversity.edu.ng'];
+          const userDomain = session.user.email?.split('@')[1];
+
+          if (!allowedDomains.includes(userDomain)) {
+            supabase.auth.signOut();
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          fetchProfile(session.user);
+        } else {
           setLoading(false);
-          return;
         }
-        fetchProfile(session.user);
-      } else {
+      })
+      .catch((err) => {
+        // Ensure loading is always cleared — a hanging getSession() causes a permanent blank screen
+        console.error('Session check failed:', err);
         setLoading(false);
-      }
-    });
+      });
 
     // 2. Listen for changes on auth state (logged in, signed out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
